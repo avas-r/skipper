@@ -1,0 +1,153 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  labels:
+    app: orchestrator
+    component: minio
+spec:
+  selector:
+    matchLabels:
+      app: orchestrator
+      component: minio
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: orchestrator
+        component: minio
+    spec:
+      containers:
+      - name: minio
+        image: minio/minio
+        imagePullPolicy: IfNotPresent
+        args:
+        - server
+        - /data
+        - --console-address
+        - ":9001"
+        env:
+        - name: MINIO_ROOT_USER
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: access-key
+        - name: MINIO_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: secret-key
+        ports:
+        - containerPort: 9000
+          name: api
+        - containerPort: 9001
+          name: console
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        livenessProbe:
+          httpGet:
+            path: /minio/health/live
+            port: 9000
+          initialDelaySeconds: 120
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /minio/health/ready
+            port: 9000
+          initialDelaySeconds: 120
+          periodSeconds: 20
+        volumeMounts:
+        - name: minio-data
+          mountPath: /data
+      volumes:
+      - name: minio-data
+        persistentVolumeClaim:
+          claimName: minio-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  labels:
+    app: orchestrator
+    component: minio
+spec:
+  selector:
+    app: orchestrator
+    component: minio
+  ports:
+  - port: 9000
+    targetPort: 9000
+    name: api
+  - port: 9001
+    targetPort: 9001
+    name: console
+  type: ClusterIP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-credentials
+type: Opaque
+data:
+  access-key: bWluaW9hZG1pbg==  # minioadmin
+  secret-key: bWluaW9hZG1pbg==  # minioadmin
+---
+# Setup job to create the bucket if it doesn't exist
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-setup
+  labels:
+    app: orchestrator
+    component: minio-setup
+spec:
+  template:
+    metadata:
+      labels:
+        app: orchestrator
+        component: minio-setup
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: mc
+        image: minio/mc
+        command:
+        - /bin/sh
+        - -c
+        - |
+          sleep 30
+          mc config host add orchestrator http://minio:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY
+          if ! mc ls orchestrator/orchestrator > /dev/null 2>&1; then
+            mc mb orchestrator/orchestrator
+          fi
+          mc policy set download orchestrator/orchestrator
+        env:
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: access-key
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: minio-credentials
+              key: secret-key

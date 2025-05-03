@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: automation-agent
+  labels:
+    app: orchestrator
+    component: automation-agent
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: orchestrator
+      component: automation-agent
+  template:
+    metadata:
+      labels:
+        app: orchestrator
+        component: automation-agent
+    spec:
+      containers:
+      - name: agent
+        image: automation-agent:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: ORCHESTRATOR_SERVER
+          value: "http://orchestrator-api"
+        - name: TENANT_ID
+          valueFrom:
+            secretKeyRef:
+              name: agent-credentials
+              key: tenant-id
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: agent-credentials
+              key: api-key
+        - name: AGENT_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: LOG_LEVEL
+          value: "INFO"
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        volumeMounts:
+        - name: agent-jobs
+          mountPath: /app/.orchestrator/jobs
+        - name: agent-packages
+          mountPath: /app/.orchestrator/packages
+      volumes:
+      - name: agent-jobs
+        emptyDir: {}
+      - name: agent-packages
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: agent-credentials
+type: Opaque
+data:
+  tenant-id: ZTg3ZTU1YzEtMzEyNC00NzBkLWE5OTUtOTRmZjgxZDA3NmRm  # e87e55c1-3124-470d-a995-94ff81d076df
+  api-key: NzUyYWM3OGMtMjRhZi00NTZiLWJkYzctMTJhYmNkZWYxMjM0  # 752ac78c-24af-456b-bdc7-12abcdef1234
