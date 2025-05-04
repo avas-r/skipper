@@ -172,13 +172,17 @@ def main():
                 logger.error("Failed to set up auto-login")
         
         # Register agent with orchestrator
-        registration_result = api_client.register_agent()
-        
-        if not registration_result:
-            logger.error("Failed to register agent with orchestrator")
-            return 1
+        try:
+            registration_result = api_client.register_agent()
             
-        logger.info(f"Agent registered successfully with ID: {config.get('agent_id')}")
+            if not registration_result:
+                logger.error("Failed to register agent with orchestrator")
+                return 1
+                
+            logger.info(f"Agent registered successfully with ID: {config.get('agent_id')}")
+        except Exception as e:
+            logger.error(f"Error registering agent: {e}")
+            return 1
         
         # Start heartbeat thread
         heartbeat_thread = Thread(

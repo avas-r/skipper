@@ -52,7 +52,7 @@ def create_app() -> FastAPI:
     # Custom OpenAPI schema
     @app.get("/openapi.json", include_in_schema=False)
     async def get_open_api_schema():
-        return get_openapi(
+        return await get_openapi(
             title=settings.APP_NAME,
             version=settings.APP_VERSION,
             description=settings.APP_DESCRIPTION,
@@ -105,7 +105,7 @@ def create_app() -> FastAPI:
         
         # Stop background tasks
         from .workers import stop_workers
-        await stop_workers()
+        stop_workers()
         
         # Close message producer
         producer = get_message_producer()

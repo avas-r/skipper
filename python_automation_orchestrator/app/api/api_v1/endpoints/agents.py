@@ -6,6 +6,7 @@ This module provides endpoints for managing automation agents.
 
 import logging
 from typing import Any, List, Optional
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -203,7 +204,6 @@ def send_agent_command(
 
 @router.post("/register", response_model=AgentResponse)
 def register_agent(
-
     agent_in: AgentCreate,
     db: Session = Depends(get_db)
 ) -> Any:
@@ -235,3 +235,50 @@ def register_agent(
     )
     
     return agent
+
+@router.post("/{agent_id}/heartbeat", response_model=dict)
+def agent_heartbeat(
+    agent_id: str,
+    heartbeat_data: dict,
+    db: Session = Depends(get_db)
+) -> Any:
+    """
+    Update agent heartbeat. This endpoint is used by agents to send heartbeat signals.
+    """
+    # Extract tenant_id from headers if possible
+    tenant_id = heartbeat_data.get("tenant_id")
+    
+    # If not in data, try to get from agent record
+    if not tenant_id:
+        # Find agent without tenant filter first
+        # This query is less restrictive - find by agent_id only
+        agent_query = db.query(Agent).filter(Agent.agent_id == agent_id)
+        agent = agent_query.first()
+        
+        if not agent:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, 
+                detail="Agent not found"
+            )
+            
+        tenant_id = str(agent.tenant_id)
+    
+    # Create agent service
+    agent_service = AgentService(db)
+    
+    # Update heartbeat - using the extracted tenant_id
+    try:
+        agent_service.update_agent_status(
+            agent_id=agent_id,
+            tenant_id=tenant_id,
+            status="online"
+        )
+        
+        # Return empty response
+        return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+    except Exception as e:
+        logging.error(f"Error updating agent status: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating agent status: {str(e)}"
+        )

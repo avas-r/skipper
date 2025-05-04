@@ -31,7 +31,7 @@ class AgentService:
         """
         self.db = db
         
-    async def register_agent(self, agent_in: AgentCreate, tenant_id: str) -> Agent:
+    def register_agent(self, agent_in: AgentCreate, tenant_id: str) -> Agent:
         """
         Register a new agent or update existing agent.
         
@@ -78,18 +78,9 @@ class AgentService:
                 }
             )
             
-            # Send agent event
-            await self._send_agent_event(
-                "agent_updated",
-                existing_agent.agent_id,
-                tenant_id,
-                {
-                    "name": existing_agent.name,
-                    "status": existing_agent.status,
-                    "ip_address": existing_agent.ip_address,
-                    "version": existing_agent.version
-                }
-            )
+            # Send agent event - moved to sync version
+            # We'll log this action but skip sending the event for now
+            logger.info(f"Agent updated: {existing_agent.agent_id} for tenant {tenant_id}")
             
             return existing_agent
             
@@ -118,17 +109,9 @@ class AgentService:
                 }
             )
             
-            # Send agent event
-            await self._send_agent_event(
-                "agent_registered",
-                new_agent.agent_id,
-                tenant_id,
-                {
-                    "name": new_agent.name,
-                    "machine_id": new_agent.machine_id,
-                    "status": new_agent.status
-                }
-            )
+            # Send agent event - moved to sync version
+            # We'll log this action but skip sending the event for now
+            logger.info(f"Agent registered: {new_agent.agent_id} for tenant {tenant_id}")
             
             return new_agent
     
@@ -362,7 +345,7 @@ class AgentService:
             Optional[Agent]: Updated agent or None if not found
         """
         # Get agent
-        agent = self.db.query(Agent).filter(
+        agent = await self.db.query(Agent).filter(
             Agent.agent_id == agent_id,
             Agent.tenant_id == tenant_id
         ).first()
@@ -409,7 +392,7 @@ class AgentService:
         
         return agent
     
-    async def update_agent_status(self, agent_id: str, tenant_id: str, status: str) -> Optional[Agent]:
+    def update_agent_status(self, agent_id: str, tenant_id: str, status: str) -> Optional[Agent]:
         """
         Update agent status.
         
@@ -436,6 +419,7 @@ class AgentService:
         # Update agent
         agent.status = status
         agent.updated_at = datetime.utcnow()
+        agent.last_heartbeat = datetime.utcnow()  # Update heartbeat time as well
         
         self.db.commit()
         self.db.refresh(agent)
@@ -450,16 +434,10 @@ class AgentService:
                 {"old_status": old_status, "new_status": status}
             )
             
-            # Send agent event
-            await self._send_agent_event(
-                "agent_status_change",
-                agent.agent_id,
-                tenant_id,
-                {
-                    "old_status": old_status,
-                    "new_status": status
-                }
-            )
+            # Log agent event instead of sending it asynchronously
+            logger.info(f"Agent status changed: {agent.agent_id} from {old_status} to {status}")
+            
+        return agent
         
         return agent
     
@@ -599,7 +577,7 @@ class AgentService:
             Optional[Agent]: Agent or None if not found
         """
         # Get agent
-        agent = self.db.query(Agent).filter(
+        agent = await self.db.query(Agent).filter(
             Agent.agent_id == agent_id,
             Agent.tenant_id == tenant_id
         ).first()
@@ -627,7 +605,7 @@ class AgentService:
         )
         
         # Log command
-        self.log_agent_activity(
+        await self.log_agent_activity(
             agent.agent_id,
             tenant_id,
             "info",

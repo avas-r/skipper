@@ -162,8 +162,13 @@ class ApiClient:
                     "disk_percent": psutil.disk_usage("/").percent,
                     "active_jobs": 0,  # Would be set by agent manager
                     "timestamp": datetime.utcnow().isoformat(),
-                    "session_status": self.config.get("session_status", "unknown")
+                    "session_status": self.config.get("session_status", "unknown"),
+                    "tenant_id": self.tenant_id  # Add tenant_id to help the server
                 }
+                
+            # Always include tenant_id in heartbeat data
+            if "tenant_id" not in metrics:
+                metrics["tenant_id"] = self.tenant_id
                 
             response = self.session.post(url, json=metrics)
             
@@ -215,7 +220,7 @@ class ApiClient:
             
             data = {
                 "status": status,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(datetime.UTC).isoformat()
             }
             
             if error:
@@ -318,7 +323,7 @@ class ApiClient:
                 "step_id": step_id,
                 "description": description,
                 "status": status,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(datetime.UTC).isoformat()
             }
             
             if data:
@@ -381,7 +386,7 @@ class ApiClient:
             
             data = {
                 "status": status,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(datetime.UTC).isoformat()
             }
             
             response = self.session.put(url, json=data)
