@@ -10,7 +10,7 @@ from datetime import datetime
 
 from sqlalchemy import Column, String, DateTime, JSON, UUID, Integer
 from sqlalchemy.sql import func
-
+from sqlalchemy.orm import relationship
 from ..db.session import Base
 
 class Tenant(Base):
@@ -28,6 +28,7 @@ class Tenant(Base):
     
     # Tenant information
     name = Column(String(255), nullable=False)
+    service_accounts = relationship("ServiceAccount", back_populates="tenant", cascade="all, delete-orphan")
     
     # Status and subscription
     status = Column(String(20), nullable=False, default="active")

@@ -17,6 +17,7 @@ from ..models.queue import Queue, QueueItem
 from ..models.package import Package, PackagePermission
 from ..models.schedule import Schedule
 from ..models.job import Job, JobExecution, JobDependency
+from ..models.agent import Agent, AgentLog, ServiceAccount, AgentSession
 from ..models.notification import (
     NotificationType, 
     NotificationChannel,

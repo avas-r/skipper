@@ -59,7 +59,7 @@ class Settings(BaseSettings):
             password=data["POSTGRES_PASSWORD"],
             host=data["POSTGRES_SERVER"],
             port=int(data["POSTGRES_PORT"]),
-            path=f"/{data['POSTGRES_DB'] or ''}",
+            path=f"{data['POSTGRES_DB'] or ''}",
         )
     
     # Redis connection

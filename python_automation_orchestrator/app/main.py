@@ -13,7 +13,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .config import Settings as settings
+from .config import settings
 from .api.api_v1.api import api_router
 from .db.session import engine, SessionLocal
 from .db.base import Base
@@ -47,7 +47,7 @@ def create_app() -> FastAPI:
         )
     
     # Mount static files
-    app.mount("/static", StaticFiles(directory="static"), name="static")
+    #app.mount("/static", StaticFiles(directory="static"), name="static")
     
     # Custom OpenAPI schema
     @app.get("/openapi.json", include_in_schema=False)
@@ -80,7 +80,7 @@ def create_app() -> FastAPI:
         )
     
     # Startup and shutdown events
-    @app.lifespan("startup")
+    @app.on_event("startup")
     async def startup_event():
         """Application startup event handler"""
         logger.info(f"Starting {settings.APP_NAME} version {settings.APP_VERSION}")
@@ -98,7 +98,7 @@ def create_app() -> FastAPI:
         
         logger.info("Application startup complete")
     
-    @app.lifespan("shutdown")
+    @app.on_event("shutdown")
     async def shutdown_event():
         """Application shutdown event handler"""
         logger.info("Shutting down application")
