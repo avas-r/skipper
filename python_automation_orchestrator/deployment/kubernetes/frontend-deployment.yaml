@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator-frontend
+  labels:
+    app: orchestrator
+    component: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orchestrator
+      component: frontend
+  template:
+    metadata:
+      labels:
+        app: orchestrator
+        component: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: orchestrator-frontend:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+        env:
+        - name: REACT_APP_API_URL
+          value: "https://api.skipper2.com"
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator-frontend
+  labels:
+    app: orchestrator
+    component: frontend
+spec:
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http
+  selector:
+    app: orchestrator
+    component: frontend
+  type: ClusterIP

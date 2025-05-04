@@ -170,6 +170,21 @@ services:
       - rabbitmq
     networks:
       - orchestrator-network
+      
+  # Frontend service
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+      args:
+        - REACT_APP_API_URL=http://localhost:8000
+    container_name: orchestrator-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    networks:
+      - orchestrator-network
 
 networks:
   orchestrator-network:

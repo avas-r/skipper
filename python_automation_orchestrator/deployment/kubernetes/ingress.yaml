@@ -12,10 +12,23 @@ metadata:
 spec:
   tls:
   - hosts:
-    - orchestrator.example.com
-    secretName: orchestrator-tls-cert
+    - skipper2.com
+    - api.skipper2.com
+    - minio.skipper2.com
+    - rabbitmq.skipper2.com
+    secretName: skipper-tls-cert
   rules:
-  - host: orchestrator.example.com
+  - host: skipper2.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: orchestrator-frontend
+            port:
+              number: 80
+  - host: api.skipper2.com
     http:
       paths:
       - path: /
