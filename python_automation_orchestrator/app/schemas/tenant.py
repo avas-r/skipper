@@ -88,7 +88,7 @@ class TenantInDB(TenantBase):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True
 
 class TenantResponse(TenantInDB):
     """Schema for tenant response"""

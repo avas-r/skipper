@@ -71,7 +71,7 @@ class NotificationChannelInDB(NotificationChannelBase):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True
 
 class NotificationChannelResponse(NotificationChannelInDB):
     """Schema for notification channel response"""
@@ -89,7 +89,7 @@ class NotificationTypeResponse(NotificationTypeBase):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True
 
 class NotificationRuleBase(BaseModel):
     """Base schema for notification rule data"""
@@ -121,7 +121,7 @@ class NotificationRuleInDB(NotificationRuleBase):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True
 
 class NotificationRuleResponse(NotificationRuleInDB):
     """Schema for notification rule response"""
@@ -151,7 +151,7 @@ class NotificationInDB(NotificationBase):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True
 
 class NotificationResponse(NotificationInDB):
     """Schema for notification response"""

@@ -76,26 +76,70 @@ The system is built with a modern, microservices-inspired architecture:
 
 ### Agent Installation
 
+#### Method 1: Direct Installation
+
 1. Install agent dependencies:
    ```bash
    pip install -r agent_requirements.txt
    ```
 
-2. Configure the agent:
+2. Run the agent with the helper script:
    ```bash
-   python -m agent.agent_main --server https://your-orchestrator-server --tenant your-tenant-id
+   # Configure and run the agent
+   python run_agent.py --server https://your-orchestrator-server --tenant your-tenant-id
+   
+   # Use headless mode for machines without GUI
+   python run_agent.py --server https://your-orchestrator-server --tenant your-tenant-id --headless
    ```
 
-3. Start the agent:
-   ```bash
-   python -m agent.agent_main
-   ```
+#### Method 2: Docker Container
+
+Use the provided Docker helper script to build and run the agent in a container:
+
+```bash
+# Build and run agent with Docker
+./run_agent_docker.sh --server https://your-orchestrator-server --tenant your-tenant-id
+```
+
+You can also build the Docker image manually:
+
+```bash
+# Build the Docker image
+docker build -t automation-agent -f agent/Dockerfile .
+
+# Run the container
+docker run --rm automation-agent --server https://your-orchestrator-server --tenant your-tenant-id
+```
+
+#### Agent Configuration
+
+The agent can be configured with the following command-line arguments:
+
+- `--server`: URL of the orchestrator server
+- `--tenant`: ID of your tenant
+- `--headless`: Run in headless mode (no GUI components)
+
+Additional configuration is stored in `~/.orchestrator/agent_config.json` and includes:
+
+- API credentials
+- Agent capabilities
+- Heartbeat intervals
+- Package directories
+- Logging settings
 
 ## Documentation
 
 API documentation is available at `/docs` when the server is running.
 
 For full documentation, see the `docs/` directory.
+
+## Examples
+
+We provide several examples to help you get started:
+
+- **Local Testing**: See `examples/local_testing.md` for instructions on testing with a local server setup
+- **Mock Server**: Use `examples/mock_server.py` to quickly test agent functionality without a full orchestrator deployment
+- **Agent Configuration**: Review the agent section above for details on running the agent component
 
 ## Development
 

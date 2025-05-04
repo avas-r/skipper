@@ -44,7 +44,7 @@ class QueueInDBBase(QueueBase):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True
 
 class QueueResponse(QueueInDBBase):
     """Schema for queue response"""
@@ -93,7 +93,7 @@ class QueueItemInDBBase(QueueItemBase):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True
 
 class QueueItemResponse(QueueItemInDBBase):
     """Schema for queue item response"""

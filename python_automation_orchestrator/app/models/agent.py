@@ -73,7 +73,6 @@ class Agent(Base):
     
     # Tenant foreign key
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.tenant_id"), nullable=False)
-    tenant = relationship("Tenant", backref="agents")
     
     # Agent information
     name = Column(String(255), nullable=False)

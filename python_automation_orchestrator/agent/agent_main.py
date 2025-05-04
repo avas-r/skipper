@@ -16,14 +16,31 @@ import certifi
 import psutil
 import zipfile
 import schedule
-import pystray
-from PIL import Image
 from io import BytesIO
 from datetime import datetime, timedelta
 from cryptography.fernet import Fernet
 from threading import Thread, Lock
 from pathlib import Path
 import urllib3
+
+# Try to import optional UI dependencies
+try:
+    import pystray
+    from PIL import Image
+    PYSTRAY_AVAILABLE = True
+except ImportError:
+    PYSTRAY_AVAILABLE = False
+
+# Try to import PyAutoGUI only if we need it
+PYAUTOGUI_AVAILABLE = False
+try:
+    # Only attempt to import if not headless
+    headless = '--headless' in sys.argv or os.environ.get('AGENT_HEADLESS') == '1'
+    if not headless:
+        import pyautogui
+        PYAUTOGUI_AVAILABLE = True
+except ImportError:
+    pass  # PyAutoGUI not available
 
 # Configure logging
 logging.basicConfig(
@@ -38,9 +55,9 @@ logging.basicConfig(
 logger = logging.getLogger("orchestrator-agent")
 
 # Import local modules
-from agent_config import AgentConfig
-from api_client import ApiClient
-from auto_login_manager import AutoLoginAgentManager, configure_windows_auto_login, configure_session_persistence, setup_agent_autostart
+from agent.agent_config import AgentConfig
+from agent.api_client import ApiClient
+from agent.auto_login_manager import AutoLoginAgentManager, configure_windows_auto_login, configure_session_persistence, setup_agent_autostart
 
 def send_heartbeat_periodically(api_client, interval_seconds):
     """Send heartbeat to orchestrator periodically"""
@@ -72,6 +89,10 @@ def poll_for_jobs(api_client, config):
 
 def setup_system_tray(config):
     """Set up system tray icon for agent"""
+    if not PYSTRAY_AVAILABLE:
+        logger.warning("Pystray not available. System tray icon will not be shown.")
+        return None
+        
     try:
         # Create a simple icon - in real implementation, would use a proper icon
         icon_image = Image.new('RGB', (64, 64), color = 'blue')

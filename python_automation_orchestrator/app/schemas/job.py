@@ -73,7 +73,7 @@ class JobResponse(BaseModel):
     last_execution_time: Optional[datetime] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class JobStartRequest(BaseModel):
     """Schema for manually starting a job"""
@@ -108,7 +108,7 @@ class JobExecutionResponse(JobExecutionBase):
     agent_name: Optional[str] = None
     
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class JobExecutionFilter(BaseModel):
     """Schema for filtering job executions"""

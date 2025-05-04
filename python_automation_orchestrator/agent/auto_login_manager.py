@@ -1,12 +1,29 @@
 import subprocess
-import winreg
-import ctypes
 import os
 import sys
 import logging
 import platform
 import time
 from pathlib import Path
+
+# Platform-specific imports
+if platform.system() == "Windows":
+    import winreg
+    import ctypes
+else:
+    # Mock these modules for non-Windows platforms
+    class WinregMock:
+        def __getattr__(self, name):
+            raise NotImplementedError("winreg is only available on Windows")
+    
+    class CtypesMock:
+        class windll:
+            class User32:
+                def __getattr__(self, name):
+                    raise NotImplementedError("ctypes.windll is only available on Windows")
+    
+    winreg = WinregMock()
+    ctypes = CtypesMock()
 
 logger = logging.getLogger("auto-login-manager")
 

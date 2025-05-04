@@ -53,7 +53,7 @@ class UserInDBBase(UserBase):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True
 
 class UserResponse(UserInDBBase):
     """Schema for user response"""
@@ -86,7 +86,7 @@ class RoleInDBBase(RoleBase):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True
 
 class RoleResponse(RoleInDBBase):
     """Schema for role response"""
@@ -110,4 +110,4 @@ class PermissionResponse(PermissionBase):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True

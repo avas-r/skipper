@@ -41,6 +41,9 @@ class AgentConfig:
     """Configuration manager for the agent"""
     
     def __init__(self, config_path=None):
+        # Parse command line arguments
+        self.args = self._parse_args()
+        
         self.config_path = config_path or os.path.join(
             os.path.expanduser("~"), 
             ".orchestrator", 
@@ -48,6 +51,69 @@ class AgentConfig:
         )
         self.config = self._load_config()
         
+        # Apply command line arguments to config
+        if self.args:
+            self._apply_args_to_config()
+            
+    def _parse_args(self):
+        """Parse command line arguments"""
+        args = {}
+        i = 1
+        while i < len(sys.argv):
+            if sys.argv[i].startswith('--'):
+                key = sys.argv[i][2:]
+                if i + 1 < len(sys.argv) and not sys.argv[i + 1].startswith('--'):
+                    args[key] = sys.argv[i + 1]
+                    i += 2
+                else:
+                    args[key] = True
+                    i += 1
+            else:
+                i += 1
+        
+        # Check for headless mode
+        if 'headless' in args or '--headless' in sys.argv:
+            args['headless'] = True
+            
+        return args
+        
+    def _apply_args_to_config(self):
+        """Apply command line arguments to configuration"""
+        if 'server' in self.args:
+            self.config['server_url'] = self.args['server']
+        if 'tenant' in self.args:
+            self.config['tenant_id'] = self.args['tenant']
+        if 'headless' in self.args and self.args['headless']:
+            self.config['settings']['headless'] = True
+                
+    def _load_config(self):
+        """Load configuration from file or create a default one"""
+        try:
+            if os.path.exists(self.config_path):
+                with open(self.config_path, 'r') as f:
+                    return json.load(f)
+        except Exception as e:
+            logger.warning(f"Error loading configuration: {e}")
+        
+        # Create default configuration
+        default_config = {
+            "agent_id": str(uuid.uuid4()),
+            "server_url": "https://localhost:8000",
+            "tenant_id": "",
+            "name": f"Agent-{socket.gethostname()}",
+            "machine_id": self._get_machine_id(),
+            "capabilities": self._get_default_capabilities(),
+            "tags": ["default"],
+            "settings": {
+                "log_level": "INFO",
+                "heartbeat_interval": 30,
+                "job_poll_interval": 15,
+                "update_check_interval": 3600,
+                "headless": True
+            }
+        }
+        
+        return default_config
 
     def _get_machine_id(self):
         """Generate a unique machine ID"""

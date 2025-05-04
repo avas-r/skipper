@@ -50,7 +50,7 @@ class PackageInDBBase(PackageBase):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True
 
 class PackageResponse(PackageInDBBase):
     """Schema for package response"""
@@ -102,7 +102,7 @@ class PackageVersionResponse(BaseModel):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True
 
 class PackageDeployRequest(BaseModel):
     """Schema for package deployment request"""

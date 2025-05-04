@@ -46,7 +46,7 @@ class AgentInDBBase(AgentBase):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True
 
 class AgentResponse(AgentInDBBase):
     """Schema for agent response"""
@@ -72,7 +72,7 @@ class AgentLogResponse(AgentLogBase):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True
 
 class AgentCommandRequest(BaseModel):
     """Schema for agent command request"""

@@ -153,8 +153,8 @@ class UserRole(Base):
     created_at = Column(DateTime, nullable=False, default=func.now())
     
     # Relationships
-    user = relationship("User")
-    role = relationship("Role")
+    user = relationship("User", overlaps="roles,users")
+    role = relationship("Role", overlaps="roles,users")
 
 class RolePermission(Base):
     """Association model for role-permission relationship"""
@@ -167,5 +167,5 @@ class RolePermission(Base):
     created_at = Column(DateTime, nullable=False, default=func.now())
     
     # Relationships
-    role = relationship("Role")
-    permission = relationship("Permission")
+    role = relationship("Role", overlaps="permissions,roles")
+    permission = relationship("Permission", overlaps="permissions,roles")

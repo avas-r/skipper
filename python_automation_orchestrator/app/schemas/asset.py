@@ -23,7 +23,7 @@ class AssetTypeResponse(AssetTypeBase):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True
 
 class AssetFolderBase(BaseModel):
     """Base schema for asset folder data"""
@@ -48,7 +48,7 @@ class AssetFolderInDB(AssetFolderBase):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True
 
 class AssetFolderResponse(AssetFolderInDB):
     """Schema for asset folder response"""
@@ -94,7 +94,7 @@ class AssetInDB(AssetBase):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True
 
 class AssetResponse(AssetInDB):
     """Schema for asset response"""
@@ -136,7 +136,7 @@ class AssetPermissionInDB(AssetPermissionBase):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True
 
 class AssetPermissionResponse(AssetPermissionInDB):
     """Schema for asset permission response"""

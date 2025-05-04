@@ -70,7 +70,7 @@ class ScheduleInDBBase(ScheduleBase):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True
 
 class ScheduleResponse(ScheduleInDBBase):
     """Schema for schedule response"""
@@ -85,7 +85,7 @@ class JobInfoResponse(BaseModel):
     
     class Config:
         """Configuration for Pydantic model"""
-        orm_mode = True
+        from_attributes = True
 
 class ScheduleWithJobsResponse(ScheduleResponse):
     """Schema for schedule with associated jobs"""

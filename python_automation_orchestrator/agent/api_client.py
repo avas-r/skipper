@@ -324,20 +324,24 @@ class ApiClient:
             if data:
                 step_data["data"] = data
                 
-            # Capture screenshot if requested
+            # Capture screenshot if requested and we're not in headless mode
             screenshot_data = None
-            if take_screenshot:
+            if take_screenshot and not self.config.get("settings", {}).get("headless", False):
                 try:
-                    import pyautogui
-                    import base64
-                    from io import BytesIO
-                    from PIL import Image
-                    
-                    screenshot = pyautogui.screenshot()
-                    buffered = BytesIO()
-                    screenshot.save(buffered, format="PNG")
-                    screenshot_data = base64.b64encode(buffered.getvalue()).decode('utf-8')
-                    step_data["screenshot"] = screenshot_data
+                    # Import only when needed and check if import is successful
+                    try:
+                        import pyautogui
+                        import base64
+                        from io import BytesIO
+                        from PIL import Image
+                        
+                        screenshot = pyautogui.screenshot()
+                        buffered = BytesIO()
+                        screenshot.save(buffered, format="PNG")
+                        screenshot_data = base64.b64encode(buffered.getvalue()).decode('utf-8')
+                        step_data["screenshot"] = screenshot_data
+                    except ImportError as import_err:
+                        logger.warning(f"Screenshot module not available: {import_err}")
                 except Exception as screenshot_error:
                     logger.warning(f"Failed to capture screenshot: {screenshot_error}")
                 
