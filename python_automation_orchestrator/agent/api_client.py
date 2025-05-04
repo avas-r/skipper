@@ -112,8 +112,8 @@ class ApiClient:
                 "tags": self.config.get("tags", []),
                 "service_account_id": self.config.get("service_account_id"),
                 "session_type": self.config.get("capabilities", {}).get("system", {}).get("session_type", "standard"),
-                "auto_login_enabled": self.config.get("capabilities", {}).get("system", {}).get("auto_login", {}).get("enabled", False)
- 
+                "auto_login_enabled": self.config.get("capabilities", {}).get("system", {}).get("auto_login", {}).get("enabled", False),
+                "tenant_id": self.tenant_id
             }
             
             response = self.session.post(url, json=data)
