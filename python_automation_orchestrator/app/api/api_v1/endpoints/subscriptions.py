@@ -59,6 +59,9 @@ def register_organization(
     Returns:
         dict: Registration result
     """
+    # Log registration attempt
+    logger.info(f"Registration attempt: org={registration.organization_name}, email={registration.email}, tier={registration.subscription_tier}")
+    
     # Create services
     subscription_service = SubscriptionService(db)
     
@@ -72,11 +75,13 @@ def register_organization(
     )
     
     if not result["success"]:
+        logger.error(f"Registration failed: {result.get('error', 'Unknown error')}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=result.get("error", "Organization registration failed")
         )
     
+    logger.info(f"Registration successful: tenant_id={result['tenant_id']}, user_id={result['user_id']}")
     return {
         "message": "Organization registered successfully",
         "tenant_id": result["tenant_id"],

@@ -43,13 +43,17 @@ class UserService:
         Returns:
             User: Created user
         """
+        logger.info(f"Creating user with email: {user_in.email}, tenant_id param: {tenant_id}, "
+                   f"user_in.tenant_id: {user_in.tenant_id}, roles: {user_in.roles}")
+                   
         # Hash the password
         hashed_password = get_password_hash(user_in.password)
         
-        # Create user
+        # We need to use the tenant_id parameter rather than user_in.tenant_id
+        # because the tenant ID in user_in might be a UUID object while the ORM needs a string
         db_user = User(
             user_id=uuid.uuid4(),
-            tenant_id=uuid.UUID(tenant_id),
+            tenant_id=uuid.UUID(tenant_id),  # This assumes tenant_id is a valid UUID string
             email=user_in.email,
             hashed_password=hashed_password,
             full_name=user_in.full_name,

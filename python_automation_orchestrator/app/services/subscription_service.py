@@ -786,22 +786,38 @@ class SubscriptionService:
         
         # Begin transaction
         try:
+            logger.info(f"Starting registration for organization: {organization_name}, user: {email}")
+            
             # 1. Create tenant
             tenant_in = TenantCreate(
                 name=organization_name,
                 subscription_tier=subscription_tier
             )
             
+            logger.info(f"Creating tenant with data: {tenant_in}")
             tenant = tenant_service.create_tenant(tenant_in=tenant_in)
+            logger.info(f"Tenant created with ID: {tenant.tenant_id}")
             
             # 2. Create admin user
-            user = user_service.create_user(
-                tenant_id=str(tenant.tenant_id),
+            from ..schemas.user import UserCreate
+            
+            # Create UserCreate object
+            user_in = UserCreate(
                 email=email,
                 password=password,
                 full_name=full_name,
-                is_admin=True  # Make the user an admin
+                roles=["admin"],  # Set admin role
+                tenant_id=tenant.tenant_id  # Include the tenant_id in UserCreate
             )
+            
+            logger.info(f"Creating user with data: {user_in.email}, tenant_id: {user_in.tenant_id}, roles: {user_in.roles}")
+            
+            # Create the user - tenant_id is already in user_in
+            user = user_service.create_user(
+                user_in=user_in,
+                tenant_id=str(tenant.tenant_id)  # This is expected by the service
+            )
+            logger.info(f"User created with ID: {user.user_id}")
             
             # 3. Create subscription
             tier = self.get_subscription_tier_by_name(subscription_tier)
@@ -814,6 +830,8 @@ class SubscriptionService:
                     "success": False,
                     "error": f"Subscription tier '{subscription_tier}' not found"
                 }
+            
+            logger.info(f"Found subscription tier: {tier.name}, ID: {tier.tier_id}")
             
             # Determine if this should be a trial
             is_trial = subscription_tier != "free"
@@ -833,10 +851,13 @@ class SubscriptionService:
                 billing_cycle="monthly"  # Default to monthly billing
             )
             
+            logger.info(f"Creating subscription with data: {subscription_in}")
             subscription = self.create_tenant_subscription(subscription_in)
+            logger.info(f"Subscription created with ID: {subscription.subscription_id}")
             
             # Commit transaction
             self.db.commit()
+            logger.info(f"Registration completed successfully for organization: {organization_name}")
             
             # Return success
             return {

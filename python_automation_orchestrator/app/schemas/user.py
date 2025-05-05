@@ -28,6 +28,20 @@ class UserCreate(UserBase):
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters")
         return v
+        
+    @validator("tenant_id")
+    def validate_tenant_id(cls, v):
+        """Validate tenant ID is a UUID"""
+        if v is None:
+            raise ValueError("tenant_id is required")
+        # If v is already a UUID, return it
+        if isinstance(v, uuid.UUID):
+            return v
+        # If v is a string, convert it to UUID
+        try:
+            return uuid.UUID(str(v))
+        except ValueError:
+            raise ValueError("tenant_id must be a valid UUID")
 
 class UserUpdate(BaseModel):
     """Schema for updating a user"""
