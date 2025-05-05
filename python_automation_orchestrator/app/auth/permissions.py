@@ -162,6 +162,14 @@ class ResourcePermission:
         Returns:
             bool: True if user has permission
         """
+        # First check feature access for subscription-limited features
+        if self.resource_type in ["analytics", "custom_branding", "schedule", "queue"]:
+            if not self._check_feature_access(self.resource_type, user, db):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Your subscription does not include access to this feature: {self.resource_type}",
+                )
+        
         return check_resource_permission(
             self.resource_type, "create", None, user, db
         )
@@ -179,6 +187,14 @@ class ResourcePermission:
         Returns:
             bool: True if user has permission
         """
+        # First check feature access for subscription-limited features
+        if self.resource_type in ["analytics", "custom_branding"]:
+            if not self._check_feature_access(self.resource_type, user, db):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Your subscription does not include access to this feature: {self.resource_type}",
+                )
+        
         return check_resource_permission(
             self.resource_type, "read", None, user, db
         )
@@ -196,6 +212,14 @@ class ResourcePermission:
         Returns:
             bool: True if user has permission
         """
+        # First check feature access for subscription-limited features
+        if self.resource_type in ["analytics", "custom_branding", "schedule", "queue"]:
+            if not self._check_feature_access(self.resource_type, user, db):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Your subscription does not include access to this feature: {self.resource_type}",
+                )
+        
         return check_resource_permission(
             self.resource_type, "update", None, user, db
         )
@@ -213,9 +237,44 @@ class ResourcePermission:
         Returns:
             bool: True if user has permission
         """
+        # First check feature access for subscription-limited features
+        if self.resource_type in ["analytics", "custom_branding", "schedule", "queue"]:
+            if not self._check_feature_access(self.resource_type, user, db):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Your subscription does not include access to this feature: {self.resource_type}",
+                )
+        
         return check_resource_permission(
             self.resource_type, "delete", None, user, db
         )
+    
+    def _check_feature_access(self, feature: str, user: User, db: Session) -> bool:
+        """
+        Check if user's tenant has access to a feature based on their subscription.
+        
+        Args:
+            feature: Feature name
+            user: Current user
+            db: Database session
+            
+        Returns:
+            bool: True if tenant has access to the feature
+        """
+        try:
+            # Avoid circular import
+            from ..services.subscription_service import SubscriptionService
+            
+            subscription_service = SubscriptionService(db)
+            access = subscription_service.check_feature_access(
+                tenant_id=str(user.tenant_id),
+                feature=feature
+            )
+            
+            return access.has_access
+        except ImportError:
+            # If service not available, default to permissive behavior
+            return True
 
 
 # Permission dependencies for common resources
@@ -248,6 +307,12 @@ class Permissions:
     
     # Tenant permissions
     tenant = ResourcePermission("tenant")
+    
+    # Subscription permissions
+    subscription = ResourcePermission("subscription")
+    
+    # Notification permissions
+    notification = ResourcePermission("notification")
 
 
 # Define default superuser permissions
@@ -278,6 +343,12 @@ SUPERUSER_PERMISSIONS = [
     
     # Tenant permissions
     "tenant:create", "tenant:read", "tenant:update", "tenant:delete",
+    
+    # Subscription permissions
+    "subscription:create", "subscription:read", "subscription:update", "subscription:delete",
+    
+    # Notification permissions
+    "notification:create", "notification:read", "notification:update", "notification:delete",
 ]
 
 # Define default admin permissions
@@ -305,6 +376,12 @@ ADMIN_PERMISSIONS = [
     
     # Role permissions
     "role:read",
+    
+    # Subscription permissions
+    "subscription:read", "subscription:update",
+    
+    # Notification permissions
+    "notification:create", "notification:read", "notification:update",
 ]
 
 # Define default user permissions
@@ -323,6 +400,12 @@ USER_PERMISSIONS = [
     
     # Schedule permissions
     "schedule:read",
+    
+    # Subscription permissions
+    "subscription:read",
+    
+    # Notification permissions
+    "notification:read",
 ]
 
 # Define default viewer permissions

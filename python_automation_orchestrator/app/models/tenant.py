@@ -33,13 +33,17 @@ class Tenant(Base):
     agent_sessions = relationship("AgentSession", back_populates="tenant", cascade="all, delete-orphan")
     agent_sessions = relationship("AgentSession", back_populates="tenant", cascade="all, delete-orphan")
     
-    # Status and subscription
+    # Status and basic subscription info
     status = Column(String(20), nullable=False, default="active")
-    subscription_tier = Column(String(20), nullable=False, default="standard")
+    subscription_tier = Column(String(20), nullable=False, default="standard")  # Legacy field, kept for backwards compatibility
     
-    # Resource limits
+    # Resource limits - these are now managed through the subscription system
+    # but kept here for backwards compatibility and quick access
     max_concurrent_jobs = Column(Integer, nullable=False, default=50)
     max_agents = Column(Integer, nullable=False, default=10)
+    
+    # Subscription relationship
+    subscription = relationship("TenantSubscription", back_populates="tenant", uselist=False, cascade="all, delete-orphan")
     
     # Additional settings as JSON
     settings = Column(JSON, nullable=True)

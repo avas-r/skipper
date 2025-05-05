@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link as RouterLink, useLocation } from 'react-router-dom';
 import {
   Box,
   Button,
@@ -9,16 +9,19 @@ import {
   Paper,
   Grid,
   Alert,
-  CircularProgress
+  CircularProgress,
+  Link
 } from '@mui/material';
 
 function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [credentials, setCredentials] = useState({
-    username: '',
+    username: location.state?.email || '',
     password: '',
   });
   const [error, setError] = useState('');
+  const [message, setMessage] = useState(location.state?.message || '');
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
@@ -77,6 +80,12 @@ function LoginPage() {
             Sign In
           </Typography>
           
+          {message && (
+            <Alert severity="success" sx={{ width: '100%', mb: 2 }} onClose={() => setMessage('')}>
+              {message}
+            </Alert>
+          )}
+          
           {error && (
             <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
               {error}
@@ -117,6 +126,18 @@ function LoginPage() {
             >
               {loading ? <CircularProgress size={24} /> : 'Sign In'}
             </Button>
+            
+            <Grid container justifyContent="center">
+              <Grid item>
+                <Link 
+                  component={RouterLink} 
+                  to="/register"
+                  variant="body2"
+                >
+                  Don't have an account? Register your organization
+                </Link>
+              </Grid>
+            </Grid>
           </Box>
         </Paper>
       </Box>

@@ -14,6 +14,9 @@ import PackagesPage from './pages/PackagesPage';
 import SchedulesPage from './pages/SchedulesPage';
 import QueuesPage from './pages/QueuesPage';
 import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import SubscriptionPage from './pages/SubscriptionPage';
+import SubscriptionTiersPage from './pages/SubscriptionTiersPage';
 
 // Create a theme
 const theme = createTheme({
@@ -33,6 +36,7 @@ function App() {
       <CssBaseline />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
         
         {/* Protected routes */}
         <Route path="/" element={<Dashboard />}>
@@ -42,6 +46,8 @@ function App() {
           <Route path="packages" element={<PackagesPage />} />
           <Route path="schedules" element={<SchedulesPage />} />
           <Route path="queues" element={<QueuesPage />} />
+          <Route path="subscription" element={<SubscriptionPage />} />
+          <Route path="subscription/tiers" element={<SubscriptionTiersPage />} />
         </Route>
       </Routes>
     </ThemeProvider>

@@ -16,6 +16,8 @@ from .schedule import Schedule
 from .job import Job, JobExecution, JobDependency
 from .notification import NotificationType, NotificationChannel, NotificationRule, Notification
 from .audit import AuditLog
+from .subscription_tier import SubscriptionTier
+from .tenant_subscription import TenantSubscription
 
 # Define all models for easy access
 __all__ = [
@@ -44,4 +46,6 @@ __all__ = [
     "NotificationRule",
     "Notification",
     "AuditLog",
+    "SubscriptionTier",
+    "TenantSubscription",
 ]

@@ -3,7 +3,7 @@
 Initial Setup Script for Python Automation Orchestrator
 
 This script creates an initial admin user and tenant when setting up
-the orchestrator for the first time.
+the orchestrator for the first time. It also sets up subscription tiers.
 """
 
 import sys
@@ -18,7 +18,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from app.db.session import engine, SessionLocal
 from app.models.tenant import Tenant
 from app.models.user import User, Role, Permission
+from app.models.subscription_tier import SubscriptionTier
+from app.models.tenant_subscription import TenantSubscription
 from app.auth.auth import get_password_hash
+from app.initial_data import create_subscription_tiers
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
@@ -142,9 +145,12 @@ def create_roles(db: Session, tenant_id: uuid.UUID, permissions: list):
     db.commit()
     return admin_role, user_role
 
-def create_tenant(db: Session, name: str):
-    """Create a new tenant"""
-    print(f"Creating tenant: {name}")
+def create_tenant(db: Session, name: str, subscription_tier_name="standard"):
+    """Create a new tenant with subscription"""
+    print(f"Creating tenant: {name} with {subscription_tier_name} subscription")
+    
+    # First ensure subscription tiers exist
+    create_subscription_tiers(db)
     
     tenant = db.query(Tenant).filter(Tenant.name == name).first()
     if not tenant:
@@ -152,13 +158,33 @@ def create_tenant(db: Session, name: str):
             tenant_id=uuid.uuid4(),
             name=name,
             status="active",
-            subscription_tier="standard",
+            subscription_tier=subscription_tier_name,
             max_concurrent_jobs=50,
             max_agents=10,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
         db.add(tenant)
+        db.flush()  # Flush to get the tenant ID, but don't commit yet
+        
+        # Create a subscription for the tenant
+        tier = db.query(SubscriptionTier).filter(SubscriptionTier.name == subscription_tier_name).first()
+        if tier:
+            subscription = TenantSubscription(
+                subscription_id=uuid.uuid4(),
+                tenant_id=tenant.tenant_id,
+                tier_id=tier.tier_id,
+                status="active",
+                billing_cycle="monthly",
+                auto_renew=True,
+                is_trial=False,
+                start_date=datetime.utcnow(),
+                next_billing_date=datetime.utcnow().replace(month=datetime.utcnow().month + 1),
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.add(subscription)
+        
         db.commit()
         db.refresh(tenant)
     
@@ -198,6 +224,9 @@ def main():
     parser.add_argument("--admin-email", required=True, help="Admin user email")
     parser.add_argument("--admin-password", required=True, help="Admin user password")
     parser.add_argument("--tenant-name", default="Default Tenant", help="Tenant name")
+    parser.add_argument("--subscription-tier", default="standard", 
+                       choices=["free", "standard", "professional", "enterprise"],
+                       help="Subscription tier for the tenant")
     
     args = parser.parse_args()
     
@@ -208,8 +237,13 @@ def main():
     
     db = SessionLocal()
     try:
-        # Create tenant
-        tenant = create_tenant(db, args.tenant_name)
+        # Create subscription tiers
+        print("Setting up subscription tiers...")
+        create_subscription_tiers(db)
+        print("Subscription tiers created")
+        
+        # Create tenant with subscription
+        tenant = create_tenant(db, args.tenant_name, args.subscription_tier)
         print(f"Tenant created with ID: {tenant.tenant_id}")
         
         # Create permissions
@@ -224,6 +258,14 @@ def main():
         # Create admin user
         admin_user = create_admin_user(db, args.admin_email, args.admin_password, tenant.tenant_id, admin_role.role_id)
         print(f"Created admin user with ID: {admin_user.user_id}")
+        
+        # Print subscription info
+        subscription = db.query(TenantSubscription).filter(TenantSubscription.tenant_id == tenant.tenant_id).first()
+        if subscription:
+            tier = db.query(SubscriptionTier).filter(SubscriptionTier.tier_id == subscription.tier_id).first()
+            if tier:
+                print(f"\nSubscription: {tier.display_name} ({tier.name})")
+                print(f"Agents: {tier.max_agents}, Concurrent Jobs: {tier.max_concurrent_jobs}")
         
         print("\nSetup complete!")
         print(f"Tenant ID: {tenant.tenant_id}")

@@ -11,6 +11,7 @@ import WorkIcon      from '@mui/icons-material/Work';
 import PackageIcon   from '@mui/icons-material/Inventory';
 import ScheduleIcon  from '@mui/icons-material/Schedule';
 import QueueIcon     from '@mui/icons-material/Queue';
+import PaymentIcon   from '@mui/icons-material/Payment';
 import LogoutIcon    from '@mui/icons-material/Logout';
 
 const drawerWidth = 240;
@@ -65,6 +66,10 @@ export default function Dashboard() {
         <ListItem button onClick={() => handleNavigation('/queues')}>
           <ListItemIcon><QueueIcon /></ListItemIcon>
           <ListItemText primary="Queues" />
+        </ListItem>
+        <ListItem button onClick={() => handleNavigation('/subscription')}>
+          <ListItemIcon><PaymentIcon /></ListItemIcon>
+          <ListItemText primary="Subscription" />
         </ListItem>
       </List>
       <Divider />
