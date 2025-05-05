@@ -4,16 +4,14 @@ import {
   AppBar, Box, Toolbar, Typography, Drawer, List, ListItem, 
   ListItemIcon, ListItemText, Divider, IconButton
 } from '@mui/material';
-import {
-  Menu as MenuIcon,
-  Dashboard as DashboardIcon,
-  Computer as ComputerIcon,
-  Work as WorkIcon,
-  Package as PackageIcon,
-  Schedule as ScheduleIcon,
-  Queue as QueueIcon,
-  Logout as LogoutIcon
-} from '@mui/icons-material';
+import MenuIcon      from '@mui/icons-material/Menu';
+import DashboardIcon from '@mui/icons-material/Dashboard';
+import ComputerIcon  from '@mui/icons-material/Computer';
+import WorkIcon      from '@mui/icons-material/Work';
+import PackageIcon   from '@mui/icons-material/Package';
+import ScheduleIcon  from '@mui/icons-material/Schedule';
+import QueueIcon     from '@mui/icons-material/Queue';
+import LogoutIcon    from '@mui/icons-material/Logout';
 
 const drawerWidth = 240;
 

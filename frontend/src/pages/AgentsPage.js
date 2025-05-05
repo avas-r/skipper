@@ -8,7 +8,8 @@ import {
   Card, CardContent, CardActions
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
-import { Add as AddIcon, Refresh as RefreshIcon } from '@mui/icons-material';
+import AddIcon     from '@mui/icons-material/Add';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { getAgents } from '../services/agentService';
 
 function AgentsPage() {

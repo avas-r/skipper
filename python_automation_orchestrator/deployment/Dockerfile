@@ -26,16 +26,16 @@ COPY . .
 # Create required directories
 RUN mkdir -p /app/uploads /app/packages /app/logs
 
+# Add wait script for dependency checking
+ADD https://github.com/ufoscout/docker-compose-wait/releases/download/2.9.0/wait /wait
+RUN chmod +x /wait
+
 # Create a non-root user
 RUN addgroup --system app && adduser --system --group app \
     && chown -R app:app /app/uploads /app/packages /app/logs
 
 # Switch to non-root user
 USER app
-
-# Add wait script for dependency checking
-ADD https://github.com/ufoscout/docker-compose-wait/releases/download/2.9.0/wait /wait
-RUN chmod +x /wait
 
 # Expose port
 EXPOSE 8000

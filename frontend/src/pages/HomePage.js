@@ -14,14 +14,12 @@ import {
   ListItemIcon,
   Divider
 } from '@mui/material';
-import {
-  Computer as ComputerIcon,
-  Work as WorkIcon,
-  Schedule as ScheduleIcon,
-  ErrorOutline as ErrorIcon,
-  CheckCircleOutline as SuccessIcon,
-  HourglassEmpty as PendingIcon
-} from '@mui/icons-material';
+import ComputerIcon        from '@mui/icons-material/Computer';
+import WorkIcon            from '@mui/icons-material/Work';
+import ScheduleIcon        from '@mui/icons-material/Schedule';
+import ErrorIcon           from '@mui/icons-material/ErrorOutline';
+import SuccessIcon         from '@mui/icons-material/CheckCircleOutline';
+import PendingIcon         from '@mui/icons-material/HourglassEmpty';
 import { Link } from 'react-router-dom';
 
 function HomePage() {
