@@ -23,6 +23,7 @@ from ....schemas.agent import (
     AgentCommandRequest
 )
 from ....services.agent_service import AgentService
+from ....services.agent_manager import AgentManager
 from ..dependencies import get_agent_from_path
 
 router = APIRouter()
@@ -41,7 +42,6 @@ def list_agents(
     _: bool = Depends(require_agent_read),
     skip: int = 0,
     limit: int = 100,
-    tenant_id: Optional[str] = None,
     status: Optional[str] = None,
     search: Optional[str] = None
 ) -> Any:
@@ -69,6 +69,17 @@ def list_agents(
     # List agents
     result = agent_service.list_agents(
         tenant_id=tenant_id,
+        status=status,
+        search=search,
+        skip=skip,
+        limit=limit
+    )
+    
+    agent_manager = AgentManager(db)
+    
+    # List agents
+    result = agent_manager.get_agents(
+        tenant_id=str(current_user.tenant_id),
         status=status,
         search=search,
         skip=skip,
