@@ -34,6 +34,9 @@ class AgentUpdate(BaseModel):
     tags: Optional[List[str]] = None
     settings: Optional[Dict[str, Any]] = None
     version: Optional[str] = None
+    service_account_id: Optional[uuid.UUID] = None
+    auto_login_enabled: Optional[bool] = None
+    session_type: Optional[str] = None
 
 class AgentInDBBase(AgentBase):
     """Base schema for agent in database"""
@@ -43,6 +46,10 @@ class AgentInDBBase(AgentBase):
     created_at: datetime
     updated_at: datetime
     last_heartbeat: Optional[datetime] = None
+    service_account_id: Optional[uuid.UUID] = None
+    auto_login_enabled: Optional[bool] = False
+    session_type: Optional[str] = None
+    session_status: Optional[str] = None
     
     class Config:
         """Configuration for Pydantic model"""

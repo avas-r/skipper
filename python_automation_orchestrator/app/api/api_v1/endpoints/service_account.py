@@ -1,101 +1,154 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
-from sqlalchemy.orm import Session
-from typing import List, Optional
+"""
+Service account management endpoints for the orchestrator API.
+
+This module provides endpoints for managing service accounts.
+"""
+
+import logging
 import uuid
+from typing import Any, List, Optional
 
-from app.schemas import ServiceAccountCreate, ServiceAccountUpdate, ServiceAccountResponse
-from app.services.service_account_service import ServiceAccountService
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
+
+# Use absolute imports
+from app.auth.jwt import get_current_active_user
+from app.auth.permissions import PermissionChecker
 from app.db.session import get_db
-from app.auth.auth import get_current_active_user, verify_permissions
+from app.models import User, ServiceAccount
+from app.schemas.service_account import (
+    ServiceAccountCreate, 
+    ServiceAccountUpdate, 
+    ServiceAccountResponse
+)
+from app.services.service_account_service import ServiceAccountService
+from app.api.api_v1.dependencies import get_service_account_from_path
 
-router = APIRouter(prefix="/api/v1/service-accounts", tags=["service-accounts"])
+router = APIRouter()
+logger = logging.getLogger(__name__)
+
+# Permission dependencies
+require_service_account_read = PermissionChecker(["service_account:read"])
+require_service_account_create = PermissionChecker(["service_account:create"])
+require_service_account_update = PermissionChecker(["service_account:update"])
+require_service_account_delete = PermissionChecker(["service_account:delete"])
+
+@router.get("/", response_model=List[ServiceAccountResponse])
+def list_service_accounts(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+    _: bool = Depends(require_service_account_read),
+    skip: int = 0,
+    limit: int = 100,
+    status: Optional[str] = None,
+    search: Optional[str] = None
+) -> Any:
+    """
+    List all service accounts with optional filtering.
+    """
+    # Create service account service
+    service_account_service = ServiceAccountService(db)
+    
+    # List service accounts for the current user's tenant
+    result = service_account_service.list_service_accounts(
+        tenant_id=str(current_user.tenant_id),
+        status=status,
+        search=search,
+        skip=skip,
+        limit=limit
+    )
+    
+    return result
 
 @router.post("/", response_model=ServiceAccountResponse)
-async def create_service_account(
-    service_account: ServiceAccountCreate,
+def create_service_account(
+    service_account_in: ServiceAccountCreate,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_active_user)
-):
-    # Verify permissions
-    verify_permissions(current_user, "service_accounts", "create")
-    
-    # Create service using dependency injection
-    service = ServiceAccountService(db)
+    current_user: User = Depends(get_current_active_user),
+    _: bool = Depends(require_service_account_create)
+) -> Any:
+    """
+    Create a new service account.
+    """
+    # Create service account service
+    service_account_service = ServiceAccountService(db)
     
     try:
-        result = service.create_service_account(
-            service_account, current_user.tenant_id, current_user.user_id
+        # Create service account
+        service_account = service_account_service.create_service_account(
+            service_account_in=service_account_in,
+            tenant_id=str(current_user.tenant_id),
+            user_id=str(current_user.user_id)
         )
-        return result
-    except Exception as e:
+        return service_account
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
 
-@router.get("/{account_id}", response_model=ServiceAccountResponse)
-async def get_service_account(
-    account_id: uuid.UUID,
+@router.get("/{service_account_id}", response_model=ServiceAccountResponse)
+def get_service_account(
+    service_account: ServiceAccount = Depends(get_service_account_from_path),
+    _: bool = Depends(require_service_account_read)
+) -> Any:
+    """
+    Get service account by ID.
+    """
+    return service_account
+
+@router.put("/{service_account_id}", response_model=ServiceAccountResponse)
+def update_service_account(
+    service_account_in: ServiceAccountUpdate,
+    service_account: ServiceAccount = Depends(get_service_account_from_path),
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_active_user)
-):
-    # Verify permissions
-    verify_permissions(current_user, "service_accounts", "read")
+    current_user: User = Depends(get_current_active_user),
+    _: bool = Depends(require_service_account_update)
+) -> Any:
+    """
+    Update a service account.
+    """
+    # Create service account service
+    service_account_service = ServiceAccountService(db)
     
-    # Get service using dependency injection
-    service = ServiceAccountService(db)
-    
-    result = service.get_service_account(account_id, current_user.tenant_id)
-    
-    if not result:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Service account not found"
+    try:
+        # Update service account
+        updated_service_account = service_account_service.update_service_account(
+            service_account_id=str(service_account.account_id),
+            service_account_in=service_account_in,
+            tenant_id=str(service_account.tenant_id),
+            user_id=str(current_user.user_id)
         )
         
-    return result
-
-@router.put("/{account_id}", response_model=ServiceAccountResponse)
-async def update_service_account(
-    account_id: uuid.UUID,
-    service_account: ServiceAccountUpdate,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_active_user)
-):
-    # Verify permissions
-    verify_permissions(current_user, "service_accounts", "update")
-    
-    # Get service using dependency injection
-    service = ServiceAccountService(db)
-    
-    result = service.update_service_account(
-        account_id, service_account, current_user.tenant_id, current_user.user_id
-    )
-    
-    if not result:
+        return updated_service_account
+    except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Service account not found"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
         )
-        
-    return result
 
-@router.delete("/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_service_account(
-    account_id: uuid.UUID,
+@router.delete("/{service_account_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_service_account(
+    service_account: ServiceAccount = Depends(get_service_account_from_path),
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_active_user)
-):
-    # Verify permissions
-    verify_permissions(current_user, "service_accounts", "delete")
+    current_user: User = Depends(get_current_active_user),
+    _: bool = Depends(require_service_account_delete)
+) -> None:
+    """
+    Delete a service account.
+    """
+    # Create service account service
+    service_account_service = ServiceAccountService(db)
     
-    # Get service using dependency injection
-    service = ServiceAccountService(db)
-    
-    result = service.delete_service_account(account_id, current_user.tenant_id)
-    
-    if not result:
+    try:
+        # Delete service account
+        service_account_service.delete_service_account(
+            service_account_id=str(service_account.account_id),
+            tenant_id=str(service_account.tenant_id),
+            user_id=str(current_user.user_id)
+        )
+    except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Service account not found"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
         )

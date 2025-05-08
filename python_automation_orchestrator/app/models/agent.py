@@ -32,6 +32,7 @@ class ServiceAccount(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.user_id"))
     last_used = Column(DateTime(timezone=True))
     configuration = Column(JSON)
+    hashed_password = Column(String(255))
     
     # Relationships
     tenant = relationship("Tenant", back_populates="service_accounts")

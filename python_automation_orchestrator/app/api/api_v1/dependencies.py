@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from ...auth.jwt import get_current_user, get_current_active_user
 from ...auth.permissions import has_permission, has_permissions, PermissionChecker
 from ...db.session import get_db, SessionLocal
-from ...models import User, Tenant, Agent
+from ...models import User, Tenant, Agent, ServiceAccount
 from ...utils.logging import log_request, log_response
 
 logger = logging.getLogger(__name__)
@@ -82,6 +82,45 @@ async def get_tenant_from_path(
         )
         
     return tenant
+
+async def get_service_account_from_path(
+    service_account_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+) -> ServiceAccount:
+    """
+    Get service account from path parameter and verify access.
+    
+    Args:
+        service_account_id: Service Account ID from path
+        db: Database session
+        current_user: Current user
+        
+    Returns:
+        ServiceAccount: Service Account object
+        
+    Raises:
+        HTTPException: If service account not found or user doesn't have access
+    """
+    # Get service account
+    service_account = db.query(ServiceAccount).filter(ServiceAccount.account_id == service_account_id).first()
+    if not service_account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Service account not found"
+        )
+        
+    # Check if user has access to service account's tenant
+    if str(current_user.tenant_id) != str(service_account.tenant_id):
+        # Allow superusers to access any service account
+        has_superuser_role = any(role.name == "superuser" for role in current_user.roles)
+        if not has_superuser_role:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access to service accounts from other tenants is not allowed"
+            )
+            
+    return service_account
 
 async def get_agent_from_path(
     agent_id: str,

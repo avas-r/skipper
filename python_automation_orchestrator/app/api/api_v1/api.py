@@ -19,7 +19,8 @@ from .endpoints import (
     executions,
     notifications,
     analytics,
-    subscriptions
+    subscriptions,
+    service_account
 )
 
 # Create API router
@@ -39,3 +40,4 @@ api_router.include_router(executions.router, prefix="/job-executions", tags=["Jo
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
 api_router.include_router(subscriptions.router, prefix="/subscriptions", tags=["Subscriptions"])
+api_router.include_router(service_account.router, prefix="/service-accounts", tags=["Service Accounts"])

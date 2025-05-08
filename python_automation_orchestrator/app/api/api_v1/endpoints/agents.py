@@ -202,6 +202,66 @@ def send_agent_command(
     
     return result
 
+@router.post("/{agent_id}/auto-login/enable", response_model=AgentResponse)
+def enable_agent_auto_login(
+    agent: Agent = Depends(get_agent_from_path),
+    service_account_id: str = Query(..., description="Service account ID to use for auto-login"),
+    session_type: str = Query("windows", description="Type of session (windows, web, etc.)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+    _: bool = Depends(require_agent_update)
+) -> Any:
+    """
+    Enable auto-login for an agent with a specific service account.
+    """
+    # Create agent service
+    agent_service = AgentService(db)
+    
+    # Enable auto-login
+    agent_update = AgentUpdate(
+        service_account_id=service_account_id,
+        auto_login_enabled=True,
+        session_type=session_type
+    )
+    
+    # Update agent
+    updated_agent = agent_service.update_agent(
+        agent_id=str(agent.agent_id),
+        agent_in=agent_update,
+        tenant_id=str(agent.tenant_id),
+        user_id=str(current_user.user_id)
+    )
+    
+    return updated_agent
+
+@router.post("/{agent_id}/auto-login/disable", response_model=AgentResponse)
+def disable_agent_auto_login(
+    agent: Agent = Depends(get_agent_from_path),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+    _: bool = Depends(require_agent_update)
+) -> Any:
+    """
+    Disable auto-login for an agent.
+    """
+    # Create agent service
+    agent_service = AgentService(db)
+    
+    # Disable auto-login
+    agent_update = AgentUpdate(
+        auto_login_enabled=False
+    )
+    
+    # Update agent
+    updated_agent = agent_service.update_agent(
+        agent_id=str(agent.agent_id),
+        agent_in=agent_update,
+        tenant_id=str(agent.tenant_id),
+        user_id=str(current_user.user_id)
+    )
+    
+    return updated_agent
+
 @router.post("/register", response_model=AgentResponse)
 def register_agent(
     agent_in: AgentCreate,

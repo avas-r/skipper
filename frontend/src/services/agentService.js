@@ -158,3 +158,28 @@ export const sendAgentCommand = async (agentId, commandData) => {
     );
   }
 };
+
+// Enable auto-login for an agent
+export const enableAgentAutoLogin = async (agentId, serviceAccountId, sessionType = 'windows') => {
+  try {
+    const url = `/api/v1/agents/${agentId}/auto-login/enable?service_account_id=${serviceAccountId}&session_type=${sessionType}`;
+    const response = await apiClient.post(url);
+    return response.data;
+  } catch (error) {
+    throw new Error(
+      error.response?.data?.detail || 'Failed to enable agent auto-login'
+    );
+  }
+};
+
+// Disable auto-login for an agent
+export const disableAgentAutoLogin = async (agentId) => {
+  try {
+    const response = await apiClient.post(`/api/v1/agents/${agentId}/auto-login/disable`);
+    return response.data;
+  } catch (error) {
+    throw new Error(
+      error.response?.data?.detail || 'Failed to disable agent auto-login'
+    );
+  }
+};

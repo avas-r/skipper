@@ -31,7 +31,6 @@ class Tenant(Base):
     service_accounts = relationship("ServiceAccount", back_populates="tenant", cascade="all, delete-orphan")
     agents = relationship("Agent", back_populates="tenant", cascade="all, delete-orphan")
     agent_sessions = relationship("AgentSession", back_populates="tenant", cascade="all, delete-orphan")
-    agent_sessions = relationship("AgentSession", back_populates="tenant", cascade="all, delete-orphan")
     
     # Status and basic subscription info
     status = Column(String(20), nullable=False, default="active")

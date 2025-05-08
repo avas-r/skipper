@@ -8,7 +8,7 @@ for the orchestration system.
 # Import all models to make them available from the package
 from .tenant import Tenant
 from .user import User, Role, Permission, RolePermission, UserRole
-from .agent import Agent, AgentLog
+from .agent import Agent, AgentLog, ServiceAccount, AgentSession
 from .asset import Asset, AssetType, AssetFolder, AssetPermission
 from .queue import Queue, QueueItem
 from .package import Package, PackagePermission
@@ -29,6 +29,8 @@ __all__ = [
     "UserRole",
     "Agent",
     "AgentLog",
+    "ServiceAccount",
+    "AgentSession",
     "Asset",
     "AssetType",
     "AssetFolder",
