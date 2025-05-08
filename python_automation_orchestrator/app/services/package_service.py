@@ -14,6 +14,7 @@ import zipfile
 from datetime import datetime
 from typing import Dict, List, Optional, Any, BinaryIO
 
+from fastapi import UploadFile
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, func, desc
 

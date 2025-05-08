@@ -58,6 +58,18 @@ apiClient.interceptors.response.use(
               localStorage.setItem('access_token', response.data.access_token);
               localStorage.setItem('refresh_token', response.data.refresh_token);
               
+              // Also update the user data to keep it in sync
+              try {
+                const userResponse = await axios.get(`${API_URL}/api/v1/auth/me`, {
+                  headers: {
+                    'Authorization': `Bearer ${response.data.access_token}`
+                  }
+                });
+                localStorage.setItem('user', JSON.stringify(userResponse.data));
+              } catch (userError) {
+                console.error('Error refreshing user data:', userError);
+              }
+              
               // Update header and retry request
               originalRequest.headers.Authorization = `Bearer ${response.data.access_token}`;
               return axios(originalRequest);

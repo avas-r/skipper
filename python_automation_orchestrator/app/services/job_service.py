@@ -6,9 +6,11 @@ This module provides services for managing jobs, job executions, and related ope
 
 import logging
 import uuid
+import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 
+from fastapi import UploadFile
 from sqlalchemy import func, and_, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -17,6 +19,7 @@ from ..models import Job, JobExecution, JobDependency, Package, Agent, User, Que
 from ..schemas.job import JobCreate, JobUpdate, JobStartRequest, JobExecutionFilter
 from ..messaging.producer import get_message_producer
 from ..utils.object_storage import ObjectStorage
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +36,7 @@ class JobService:
         self.db = db
         self.object_storage = ObjectStorage()
         
-    async def create_job(self, job_in: JobCreate, tenant_id: uuid.UUID, user_id: uuid.UUID) -> Job:
+    def create_job(self, job_in: JobCreate, tenant_id: uuid.UUID, user_id: uuid.UUID) -> Job:
         """
         Create a new job.
         
@@ -49,15 +52,16 @@ class JobService:
             ValueError: If related entities not found or validation fails
         """
         # Validate package exists and belongs to tenant
-        package = self.db.query(Package).filter(
-            Package.package_id == job_in.package_id,
-            Package.tenant_id == tenant_id
-        ).first()
+        if job_in.package_id:
+            package = self.db.query(Package).filter(
+                Package.package_id == job_in.package_id,
+                Package.tenant_id == tenant_id
+            ).first()
+            
+            if not package:
+                raise ValueError(f"Package {job_in.package_id} not found")
         
-        if not package:
-            raise ValueError(f"Package not found: {job_in.package_id}")
-        
-        # Validate schedule if provided
+        # Validate schedule exists and belongs to tenant
         if job_in.schedule_id:
             schedule = self.db.query(Schedule).filter(
                 Schedule.schedule_id == job_in.schedule_id,
@@ -65,66 +69,81 @@ class JobService:
             ).first()
             
             if not schedule:
-                raise ValueError(f"Schedule not found: {job_in.schedule_id}")
-        
-        # Validate queue if provided
-        if job_in.queue_id:
-            queue = self.db.query(Queue).filter(
-                Queue.queue_id == job_in.queue_id,
-                Queue.tenant_id == tenant_id
-            ).first()
-            
-            if not queue:
-                raise ValueError(f"Queue not found: {job_in.queue_id}")
+                raise ValueError(f"Schedule {job_in.schedule_id} not found")
         
         # Create job
-        job = Job(
-            job_id=uuid.uuid4(),
-            tenant_id=tenant_id,
-            name=job_in.name,
-            description=job_in.description,
-            package_id=job_in.package_id,
-            schedule_id=job_in.schedule_id,
-            queue_id=job_in.queue_id,
-            priority=job_in.priority or 1,
-            max_concurrent_runs=job_in.max_concurrent_runs or 1,
-            timeout_seconds=job_in.timeout_seconds or 3600,
-            retry_count=job_in.retry_count or 0,
-            retry_delay_seconds=job_in.retry_delay_seconds or 60,
-            parameters=job_in.parameters or {},
-            status="active",
-            created_by=user_id,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
-        )
+        job_data = job_in.dict(exclude_unset=True)
+        job_data["tenant_id"] = tenant_id
+        job_data["created_by"] = user_id
+        job_data["updated_by"] = user_id
         
+        job = Job(**job_data)
+        
+        # Add job to database
         self.db.add(job)
         self.db.commit()
         self.db.refresh(job)
         
-        # Add dependencies if provided
-        if job_in.depends_on_job_ids:
-            for dep_job_id in job_in.depends_on_job_ids:
-                # Validate dependency job exists and belongs to tenant
-                dep_job = self.db.query(Job).filter(
-                    Job.job_id == dep_job_id,
-                    Job.tenant_id == tenant_id
-                ).first()
-                
-                if not dep_job:
-                    logger.warning(f"Dependency job not found: {dep_job_id}")
-                    continue
-                
-                # Create dependency
-                dependency = JobDependency(
-                    job_id=job.job_id,
-                    depends_on_job_id=dep_job_id,
-                    created_at=datetime.utcnow()
-                )
-                
-                self.db.add(dependency)
+        return job
+    
+    def update_job(self, job_id: uuid.UUID, job_in: JobUpdate, tenant_id: uuid.UUID, user_id: uuid.UUID) -> Optional[Job]:
+        """
+        Update a job.
+        
+        Args:
+            job_id: Job ID
+            job_in: Job update data
+            tenant_id: Tenant ID
+            user_id: User ID updating the job
             
-            self.db.commit()
+        Returns:
+            Optional[Job]: Updated job or None if not found
+            
+        Raises:
+            ValueError: If related entities not found or validation fails
+        """
+        # Get job
+        job = self.db.query(Job).filter(
+            Job.job_id == job_id,
+            Job.tenant_id == tenant_id
+        ).first()
+        
+        if not job:
+            return None
+        
+        # Validate package exists and belongs to tenant
+        if job_in.package_id:
+            package = self.db.query(Package).filter(
+                Package.package_id == job_in.package_id,
+                Package.tenant_id == tenant_id
+            ).first()
+            
+            if not package:
+                raise ValueError(f"Package {job_in.package_id} not found")
+        
+        # Validate schedule exists and belongs to tenant
+        if job_in.schedule_id:
+            schedule = self.db.query(Schedule).filter(
+                Schedule.schedule_id == job_in.schedule_id,
+                Schedule.tenant_id == tenant_id
+            ).first()
+            
+            if not schedule:
+                raise ValueError(f"Schedule {job_in.schedule_id} not found")
+        
+        # Update job
+        job_data = job_in.dict(exclude_unset=True)
+        
+        for key, value in job_data.items():
+            setattr(job, key, value)
+        
+        # Update audit fields
+        job.updated_at = datetime.utcnow()
+        job.updated_by = user_id
+        
+        # Update database
+        self.db.commit()
+        self.db.refresh(job)
         
         return job
     
@@ -144,12 +163,7 @@ class JobService:
             Job.tenant_id == tenant_id
         ).first()
     
-    def get_job_with_executions(
-        self, 
-        job_id: uuid.UUID, 
-        tenant_id: uuid.UUID,
-        limit: int = 10
-    ) -> Optional[Tuple[Job, List[JobExecution]]]:
+    def get_job_with_executions(self, job_id: uuid.UUID, tenant_id: uuid.UUID, limit: int = 10) -> Optional[Dict[str, Any]]:
         """
         Get a job with its recent executions.
         
@@ -159,8 +173,9 @@ class JobService:
             limit: Maximum number of executions to return
             
         Returns:
-            Optional[Tuple[Job, List[JobExecution]]]: Job and executions or None if not found
+            Optional[Dict[str, Any]]: Job with executions or None if not found
         """
+        # Get job
         job = self.db.query(Job).filter(
             Job.job_id == job_id,
             Job.tenant_id == tenant_id
@@ -171,132 +186,66 @@ class JobService:
         
         # Get recent executions
         executions = self.db.query(JobExecution).filter(
-            JobExecution.job_id == job_id
-        ).order_by(
-            JobExecution.created_at.desc()
-        ).limit(limit).all()
+            JobExecution.job_id == job_id,
+            JobExecution.tenant_id == tenant_id
+        ).order_by(JobExecution.started_at.desc()).limit(limit).all()
         
-        return (job, executions)
+        # Return job with executions
+        return {
+            "job": job,
+            "executions": executions
+        }
     
     def list_jobs(
         self,
         tenant_id: uuid.UUID,
+        status: Optional[str] = None,
         package_id: Optional[uuid.UUID] = None,
         schedule_id: Optional[uuid.UUID] = None,
-        status: Optional[str] = None,
         search: Optional[str] = None,
         skip: int = 0,
         limit: int = 100
-    ) -> Tuple[List[Job], int]:
+    ) -> List[Job]:
         """
         List jobs with filtering.
         
         Args:
             tenant_id: Tenant ID
-            package_id: Optional package filter
-            schedule_id: Optional schedule filter
             status: Optional status filter
-            search: Optional search term
+            package_id: Optional package ID filter
+            schedule_id: Optional schedule ID filter
+            search: Optional search term for name/description
             skip: Number of records to skip
             limit: Maximum number of records to return
             
         Returns:
-            Tuple[List[Job], int]: List of jobs and total count
+            List[Job]: List of jobs
         """
+        # Base query
         query = self.db.query(Job).filter(Job.tenant_id == tenant_id)
         
         # Apply filters
-        if package_id:
-            query = query.filter(Job.package_id == package_id)
-        
-        if schedule_id:
-            query = query.filter(Job.schedule_id == schedule_id)
-        
         if status:
             query = query.filter(Job.status == status)
-        
+            
+        if package_id:
+            query = query.filter(Job.package_id == package_id)
+            
+        if schedule_id:
+            query = query.filter(Job.schedule_id == schedule_id)
+            
         if search:
-            query = query.filter(Job.name.ilike(f"%{search}%"))
+            query = query.filter(
+                or_(
+                    Job.name.ilike(f"%{search}%"),
+                    Job.description.ilike(f"%{search}%")
+                )
+            )
         
-        # Get total count before pagination
-        total_count = query.count()
-        
-        # Apply pagination
+        # Apply pagination and sorting
         query = query.order_by(Job.name).offset(skip).limit(limit)
         
-        return query.all(), total_count
-    
-    def update_job(
-        self, 
-        job_id: uuid.UUID, 
-        job_in: JobUpdate, 
-        tenant_id: uuid.UUID
-    ) -> Optional[Job]:
-        """
-        Update a job.
-        
-        Args:
-            job_id: Job ID
-            job_in: Job update data
-            tenant_id: Tenant ID
-            
-        Returns:
-            Optional[Job]: Updated job or None if not found
-            
-        Raises:
-            ValueError: If related entities not found or validation fails
-        """
-        # Get job
-        job = self.db.query(Job).filter(
-            Job.job_id == job_id,
-            Job.tenant_id == tenant_id
-        ).first()
-        
-        if not job:
-            return None
-        
-        # Validate package if provided
-        if job_in.package_id:
-            package = self.db.query(Package).filter(
-                Package.package_id == job_in.package_id,
-                Package.tenant_id == tenant_id
-            ).first()
-            
-            if not package:
-                raise ValueError(f"Package not found: {job_in.package_id}")
-        
-        # Validate schedule if provided
-        if job_in.schedule_id:
-            schedule = self.db.query(Schedule).filter(
-                Schedule.schedule_id == job_in.schedule_id,
-                Schedule.tenant_id == tenant_id
-            ).first()
-            
-            if not schedule:
-                raise ValueError(f"Schedule not found: {job_in.schedule_id}")
-        
-        # Validate queue if provided
-        if job_in.queue_id:
-            queue = self.db.query(Queue).filter(
-                Queue.queue_id == job_in.queue_id,
-                Queue.tenant_id == tenant_id
-            ).first()
-            
-            if not queue:
-                raise ValueError(f"Queue not found: {job_in.queue_id}")
-        
-        # Update job fields from input data
-        update_data = job_in.dict(exclude_unset=True)
-        for key, value in update_data.items():
-            setattr(job, key, value)
-        
-        # Update timestamp
-        job.updated_at = datetime.utcnow()
-        
-        self.db.commit()
-        self.db.refresh(job)
-        
-        return job
+        return query.all()
     
     def delete_job(self, job_id: uuid.UUID, tenant_id: uuid.UUID) -> bool:
         """
@@ -307,7 +256,10 @@ class JobService:
             tenant_id: Tenant ID
             
         Returns:
-            bool: True if deleted, False if not found
+            bool: True if successful
+            
+        Raises:
+            ValueError: If there are active schedules or executions
         """
         # Get job
         job = self.db.query(Job).filter(
@@ -317,6 +269,19 @@ class JobService:
         
         if not job:
             return False
+        
+        # Check if job has scheduled executions
+        if job.schedule_id and job.status == "active":
+            raise ValueError("Cannot delete job with active schedule")
+        
+        # Check if job has running executions
+        running_executions = self.db.query(JobExecution).filter(
+            JobExecution.job_id == job_id,
+            JobExecution.status.in_(["queued", "running"])
+        ).count()
+        
+        if running_executions > 0:
+            raise ValueError(f"Cannot delete job with {running_executions} running executions")
         
         # Delete job dependencies
         self.db.query(JobDependency).filter(
@@ -332,206 +297,216 @@ class JobService:
         
         return True
     
-    async def start_job(
-        self, 
-        job_id: uuid.UUID, 
-        tenant_id: uuid.UUID, 
-        start_request: JobStartRequest
-    ) -> Optional[JobExecution]:
+    def update_job_status(self, job_id: uuid.UUID, tenant_id: uuid.UUID, status: str, user_id: Optional[uuid.UUID] = None) -> Optional[Job]:
         """
-        Start a job execution.
+        Update job status.
         
         Args:
             job_id: Job ID
             tenant_id: Tenant ID
-            start_request: Job start parameters
+            status: New status
+            user_id: User ID updating the status
             
         Returns:
-            Optional[JobExecution]: Created job execution or None if job not found
-            
-        Raises:
-            ValueError: If job cannot be started (e.g., max concurrent runs exceeded)
+            Optional[Job]: Updated job or None if not found
         """
         # Get job
         job = self.db.query(Job).filter(
             Job.job_id == job_id,
-            Job.tenant_id == tenant_id,
-            Job.status == "active"
+            Job.tenant_id == tenant_id
         ).first()
         
         if not job:
             return None
         
-        # Check if job already has too many concurrent runs
-        running_executions = self.db.query(JobExecution).filter(
-            JobExecution.job_id == job_id,
-            JobExecution.status.in_(["pending", "running"])
-        ).count()
+        # Update status
+        job.status = status
         
-        if running_executions >= job.max_concurrent_runs:
-            raise ValueError(f"Job already has maximum concurrent runs: {job.max_concurrent_runs}")
+        # Update audit fields
+        job.updated_at = datetime.utcnow()
+        if user_id:
+            job.updated_by = user_id
         
-        # Merge parameters
-        merged_params = job.parameters.copy() if job.parameters else {}
-        if start_request.parameters:
-            merged_params.update(start_request.parameters)
+        # Update database
+        self.db.commit()
+        self.db.refresh(job)
         
-        # Determine queue
-        queue_id = start_request.queue_id or job.queue_id
+        return job
+    
+    def start_job(
+        self, 
+        job_id: uuid.UUID, 
+        tenant_id: uuid.UUID, 
+        user_id: uuid.UUID,
+        parameters: Optional[Dict[str, Any]] = None,
+        agent_id: Optional[uuid.UUID] = None,
+        background_tasks: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        """
+        Start a job manually.
         
-        # Create job execution
+        Args:
+            job_id: Job ID
+            tenant_id: Tenant ID
+            user_id: User ID starting the job
+            parameters: Optional parameters to pass to the job
+            agent_id: Optional agent ID to run the job on
+            background_tasks: Optional background tasks to run
+            
+        Returns:
+            Dict[str, Any]: Job execution information
+            
+        Raises:
+            ValueError: If job not found or invalid
+        """
+        # Get job
+        job = self.db.query(Job).filter(
+            Job.job_id == job_id,
+            Job.tenant_id == tenant_id
+        ).first()
+        
+        if not job:
+            raise ValueError(f"Job {job_id} not found")
+        
+        # Get package if specified
+        package = None
+        if job.package_id:
+            package = self.db.query(Package).filter(
+                Package.package_id == job.package_id,
+                Package.tenant_id == tenant_id
+            ).first()
+            
+            if not package:
+                raise ValueError(f"Package {job.package_id} not found")
+        
+        # Get agent if specified
+        if agent_id:
+            agent = self.db.query(Agent).filter(
+                Agent.agent_id == agent_id,
+                Agent.tenant_id == tenant_id
+            ).first()
+            
+            if not agent:
+                raise ValueError(f"Agent {agent_id} not found")
+        else:
+            # Auto-select agent if not specified
+            agent = self._select_agent_for_job(job)
+            if not agent:
+                raise ValueError("No suitable agent found for job")
+            
+            agent_id = agent.agent_id
+        
+        # Create execution record
         execution = JobExecution(
             execution_id=uuid.uuid4(),
             job_id=job_id,
             tenant_id=tenant_id,
-            status="pending",
-            trigger_type="manual",
-            input_parameters=merged_params,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            agent_id=agent_id,
+            package_id=job.package_id,
+            parameters=parameters or job.parameters or {},
+            status="queued",
+            created_by=user_id,
+            priority=job.priority or 1
         )
         
         self.db.add(execution)
         self.db.commit()
         self.db.refresh(execution)
         
-        # If queue specified, add to queue
-        if queue_id:
-            # Create queue item
-            queue_item = QueueItem(
-                item_id=uuid.uuid4(),
-                queue_id=queue_id,
-                tenant_id=tenant_id,
-                status="pending",
-                priority=start_request.priority or job.priority,
-                reference_id=str(job_id),
-                payload={
-                    "execution_id": str(execution.execution_id),
-                    "job_id": str(job_id),
-                    "parameters": merged_params
-                },
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
-            )
-            
-            self.db.add(queue_item)
-            self.db.commit()
-            
-            # Update execution with queue item
-            execution.queue_item_id = queue_item.item_id
-            self.db.commit()
-            
-            # Send message to messaging system
-            message_producer = get_message_producer()
-            await message_producer.send_message(
-                exchange="jobs",
-                routing_key="queue.item.new",
-                message_data={
-                    "action": "new_item",
-                    "queue_id": str(queue_id),
-                    "item_id": str(queue_item.item_id),
-                    "tenant_id": str(tenant_id),
-                    "priority": queue_item.priority
-                }
+        # Send job to queue
+        if background_tasks:
+            background_tasks.add_task(
+                self._send_job_to_agent,
+                execution_id=execution.execution_id,
+                agent_id=agent_id,
+                tenant_id=tenant_id
             )
         else:
-            # Send message to directly process execution
-            message_producer = get_message_producer()
-            await message_producer.send_message(
-                exchange="jobs",
-                routing_key="job.execution.new",
-                message_data={
-                    "action": "new_execution",
-                    "execution_id": str(execution.execution_id),
-                    "job_id": str(job_id),
-                    "tenant_id": str(tenant_id)
-                }
+            # Execute immediately (synchronously)
+            self._send_job_to_agent(
+                execution_id=execution.execution_id,
+                agent_id=agent_id,
+                tenant_id=tenant_id
             )
         
-        return execution
-    
-    async def process_execution(
-        self, 
-        execution_id: uuid.UUID, 
-        tenant_id: uuid.UUID
-    ) -> Optional[JobExecution]:
+        return {
+            "execution_id": execution.execution_id,
+            "status": "queued",
+            "agent_id": agent_id
+        }
+        
+    def create_package_execution(
+        self,
+        agent_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        package_id: uuid.UUID,
+        parameters: Optional[Dict[str, Any]] = None
+    ) -> JobExecution:
         """
-        Process a job execution (worker function).
+        Create a package execution.
+        
+        This is used for direct package executions from agents without a parent job.
         
         Args:
-            execution_id: Execution ID
+            agent_id: Agent ID
             tenant_id: Tenant ID
+            package_id: Package ID
+            parameters: Optional parameters
             
         Returns:
-            Optional[JobExecution]: Updated execution or None if not found
+            JobExecution: Created execution record
+            
+        Raises:
+            ValueError: If package not found or invalid
         """
-        # Get execution with job
-        execution = self.db.query(JobExecution).filter(
-            JobExecution.execution_id == execution_id,
-            JobExecution.tenant_id == tenant_id
-        ).join(Job).first()
+        # Validate package
+        package = self.db.query(Package).filter(
+            Package.package_id == package_id,
+            Package.tenant_id == tenant_id
+        ).first()
         
-        if not execution:
-            logger.warning(f"Execution not found: {execution_id}")
-            return None
-        
-        # Get available agents
-        agents = self.db.query(Agent).filter(
-            Agent.tenant_id == tenant_id,
-            Agent.status == "online"
-        ).all()
-        
-        if not agents:
-            logger.warning(f"No available agents for tenant: {tenant_id}")
-            execution.status = "pending"  # Keep pending status
-            self.db.commit()
-            return execution
-        
-        # Assign to first available agent (simple round-robin)
-        agent = agents[0]
-        
-        # Update execution
-        execution.agent_id = agent.agent_id
-        execution.status = "assigned"
-        execution.updated_at = datetime.utcnow()
-        
-        self.db.commit()
-        
-        # Send message to agent
-        message_producer = get_message_producer()
-        await message_producer.send_message(
-            exchange="agents",
-            routing_key=f"agent.{agent.agent_id}.job",
-            message_data={
-                "action": "execute_job",
-                "execution_id": str(execution_id),
-                "job_id": str(execution.job_id),
-                "tenant_id": str(tenant_id),
-                "parameters": execution.input_parameters
-            }
+        if not package:
+            raise ValueError(f"Package {package_id} not found")
+            
+        # Create execution record (without a job)
+        execution = JobExecution(
+            execution_id=uuid.uuid4(),
+            job_id=None,  # No parent job
+            tenant_id=tenant_id,
+            agent_id=agent_id,
+            package_id=package_id,
+            parameters=parameters or {},
+            status="queued",
+            is_direct_execution=True  # Flag to indicate direct package execution
         )
         
-        logger.info(f"Job execution {execution_id} assigned to agent {agent.agent_id}")
+        self.db.add(execution)
+        self.db.commit()
+        self.db.refresh(execution)
         
         return execution
-    
-    async def update_execution_status(
+        
+    def update_execution_status(
         self,
         execution_id: uuid.UUID,
+        agent_id: uuid.UUID,
         tenant_id: uuid.UUID,
         status: str,
-        error_message: Optional[str] = None,
-        results: Optional[Dict[str, Any]] = None
+        progress: Optional[float] = None,
+        results: Optional[Dict[str, Any]] = None,
+        error: Optional[str] = None
     ) -> Optional[JobExecution]:
         """
-        Update job execution status.
+        Update execution status.
         
         Args:
             execution_id: Execution ID
+            agent_id: Agent ID
             tenant_id: Tenant ID
             status: New status
-            error_message: Optional error message
-            results: Optional execution results
+            progress: Optional progress (0-100)
+            results: Optional results data
+            error: Optional error message
             
         Returns:
             Optional[JobExecution]: Updated execution or None if not found
@@ -543,113 +518,171 @@ class JobService:
         ).first()
         
         if not execution:
-            logger.warning(f"Execution not found: {execution_id}")
             return None
-        
-        # Update execution
+            
+        # Verify agent matches
+        if execution.agent_id != agent_id:
+            logger.warning(f"Agent {agent_id} tried to update execution {execution_id} belonging to agent {execution.agent_id}")
+            return None
+            
+        # Update status
         execution.status = status
-        execution.updated_at = datetime.utcnow()
         
+        # Update progress if provided
+        if progress is not None:
+            execution.progress = progress
+            
+        # Update results if provided
+        if results:
+            execution.results = results
+            
+        # Update error if provided
+        if error:
+            execution.error = error
+            
+        # Update timestamps
         if status == "running" and not execution.started_at:
             execution.started_at = datetime.utcnow()
-        
-        if status in ["completed", "failed", "cancelled"]:
-            execution.completed_at = datetime.utcnow()
+        elif status in ["completed", "failed", "cancelled"]:
+            execution.ended_at = datetime.utcnow()
             
-            if execution.started_at:
-                # Calculate execution time
-                delta = execution.completed_at - execution.started_at
-                execution.execution_time_ms = int(delta.total_seconds() * 1000)
-        
-        if error_message:
-            execution.error_message = error_message
-        
-        if results:
-            execution.output_results = results
-        
+        # Save changes
         self.db.commit()
-        
-        # Send event message
-        message_producer = get_message_producer()
-        await message_producer.send_message(
-            exchange="events",
-            routing_key=f"job.execution.{status}",
-            message_data={
-                "event_type": "job_execution_status_change",
-                "execution_id": str(execution_id),
-                "job_id": str(execution.job_id),
-                "tenant_id": str(tenant_id),
-                "status": status,
-                "timestamp": datetime.utcnow().isoformat()
-            }
-        )
-        
-        # If execution completed, process dependencies
-        if status == "completed":
-            await self.process_job_dependencies(execution.job_id, tenant_id)
+        self.db.refresh(execution)
         
         return execution
-    
-    async def cancel_execution(
-        self, 
-        execution_id: uuid.UUID, 
-        tenant_id: uuid.UUID
-    ) -> Optional[JobExecution]:
+        
+    def get_execution(self, execution_id: uuid.UUID, tenant_id: uuid.UUID) -> Optional[JobExecution]:
         """
-        Cancel a job execution.
+        Get a job execution.
         
         Args:
             execution_id: Execution ID
             tenant_id: Tenant ID
             
         Returns:
-            Optional[JobExecution]: Updated execution or None if not found
+            Optional[JobExecution]: Execution or None if not found
+        """
+        return self.db.query(JobExecution).filter(
+            JobExecution.execution_id == execution_id,
+            JobExecution.tenant_id == tenant_id
+        ).first()
+        
+    def save_execution_result(
+        self,
+        execution_id: uuid.UUID,
+        file: UploadFile,
+        result_type: str
+    ) -> str:
+        """
+        Save a file from an execution.
+        
+        Args:
+            execution_id: Execution ID
+            file: Uploaded file
+            result_type: Type of result file
+            
+        Returns:
+            str: Path to the saved file
+            
+        Raises:
+            ValueError: If execution not found or invalid
         """
         # Get execution
         execution = self.db.query(JobExecution).filter(
-            JobExecution.execution_id == execution_id,
-            JobExecution.tenant_id == tenant_id,
-            JobExecution.status.in_(["pending", "assigned", "running"])
+            JobExecution.execution_id == execution_id
         ).first()
         
         if not execution:
-            return None
+            raise ValueError(f"Execution {execution_id} not found")
+            
+        # Create result directory if it doesn't exist
+        result_dir = os.path.join(settings.EXECUTIONS_FOLDER, str(execution_id), "results")
+        os.makedirs(result_dir, exist_ok=True)
         
-        # If execution has an agent, send cancel command
-        if execution.agent_id:
-            message_producer = get_message_producer()
-            await message_producer.send_message(
-                exchange="agents",
-                routing_key=f"agent.{execution.agent_id}.command",
-                message_data={
-                    "command": "cancel_job",
-                    "execution_id": str(execution_id),
-                    "job_id": str(execution.job_id),
-                    "tenant_id": str(tenant_id)
-                }
-            )
+        # Generate file name
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        file_extension = os.path.splitext(file.filename)[1] if file.filename else ""
+        file_name = f"{timestamp}_{result_type}{file_extension}"
+        file_path = os.path.join(result_dir, file_name)
         
-        # Update execution status
-        execution.status = "cancelled"
-        execution.completed_at = datetime.utcnow()
-        execution.updated_at = datetime.utcnow()
+        # Save file
+        with open(file_path, "wb") as f:
+            f.write(file.file.read())
+            
+        # Store reference in results
+        if not execution.results:
+            execution.results = {}
+            
+        if "files" not in execution.results:
+            execution.results["files"] = []
+            
+        execution.results["files"].append({
+            "type": result_type,
+            "path": file_path,
+            "name": file_name,
+            "timestamp": timestamp
+        })
         
-        if execution.started_at:
-            # Calculate execution time
-            delta = execution.completed_at - execution.started_at
-            execution.execution_time_ms = int(delta.total_seconds() * 1000)
-        
+        # Save changes
         self.db.commit()
         
-        return execution
+        return file_path
     
-    def get_execution(
-        self, 
-        execution_id: uuid.UUID, 
-        tenant_id: uuid.UUID
-    ) -> Optional[JobExecution]:
+    def list_job_executions(
+        self,
+        tenant_id: uuid.UUID,
+        filter: JobExecutionFilter,
+        skip: int = 0,
+        limit: int = 100
+    ) -> List[JobExecution]:
         """
-        Get job execution by ID.
+        List job executions with filtering.
+        
+        Args:
+            tenant_id: Tenant ID
+            filter: Filter criteria
+            skip: Number of records to skip
+            limit: Maximum number of records to return
+            
+        Returns:
+            List[JobExecution]: List of job executions
+        """
+        # Base query
+        query = self.db.query(JobExecution).filter(JobExecution.tenant_id == tenant_id)
+        
+        # Apply filters
+        if filter.job_id:
+            query = query.filter(JobExecution.job_id == filter.job_id)
+            
+        if filter.agent_id:
+            query = query.filter(JobExecution.agent_id == filter.agent_id)
+            
+        if filter.status:
+            query = query.filter(JobExecution.status == filter.status)
+            
+        if filter.from_date:
+            try:
+                from_date = datetime.fromisoformat(filter.from_date)
+                query = query.filter(JobExecution.created_at >= from_date)
+            except ValueError:
+                pass
+                
+        if filter.to_date:
+            try:
+                to_date = datetime.fromisoformat(filter.to_date)
+                query = query.filter(JobExecution.created_at <= to_date)
+            except ValueError:
+                pass
+        
+        # Apply pagination and sorting
+        query = query.order_by(JobExecution.created_at.desc()).offset(skip).limit(limit)
+        
+        return query.all()
+    
+    def get_job_execution(self, execution_id: uuid.UUID, tenant_id: uuid.UUID) -> Optional[JobExecution]:
+        """
+        Get a job execution by ID.
         
         Args:
             execution_id: Execution ID
@@ -661,207 +694,290 @@ class JobService:
         return self.db.query(JobExecution).filter(
             JobExecution.execution_id == execution_id,
             JobExecution.tenant_id == tenant_id
-        ).options(
-            joinedload(JobExecution.job),
-            joinedload(JobExecution.agent)
         ).first()
     
-    def list_executions(
-        self,
-        tenant_id: uuid.UUID,
-        job_id: Optional[uuid.UUID] = None,
-        filter_params: Optional[JobExecutionFilter] = None,
-        skip: int = 0,
-        limit: int = 100
-    ) -> Tuple[List[JobExecution], int]:
-        """
-        List job executions with filtering.
-        
-        Args:
-            tenant_id: Tenant ID
-            job_id: Optional job filter
-            filter_params: Optional filter parameters
-            skip: Number of records to skip
-            limit: Maximum number of records to return
-            
-        Returns:
-            Tuple[List[JobExecution], int]: List of executions and total count
-        """
-        query = self.db.query(JobExecution).filter(JobExecution.tenant_id == tenant_id)
-        
-        # Apply job filter
-        if job_id:
-            query = query.filter(JobExecution.job_id == job_id)
-        
-        # Apply filter parameters
-        if filter_params:
-            if filter_params.status:
-                query = query.filter(JobExecution.status.in_(filter_params.status))
-            
-            if filter_params.start_date:
-                query = query.filter(JobExecution.created_at >= filter_params.start_date)
-            
-            if filter_params.end_date:
-                query = query.filter(JobExecution.created_at <= filter_params.end_date)
-            
-            if filter_params.agent_id:
-                query = query.filter(JobExecution.agent_id == filter_params.agent_id)
-            
-            if filter_params.package_id:
-                query = query.join(Job).filter(Job.package_id == filter_params.package_id)
-            
-            if filter_params.trigger_type:
-                query = query.filter(JobExecution.trigger_type == filter_params.trigger_type)
-        
-        # Get total count before pagination
-        total_count = query.count()
-        
-        # Apply pagination and ordering
-        query = query.order_by(JobExecution.created_at.desc()).offset(skip).limit(limit)
-        
-        # Load related entities
-        query = query.options(
-            joinedload(JobExecution.job),
-            joinedload(JobExecution.agent)
-        )
-        
-        return query.all(), total_count
-    
-    async def process_job_dependencies(
+    def stop_job(
         self, 
-        completed_job_id: uuid.UUID, 
-        tenant_id: uuid.UUID
-    ) -> int:
-        """
-        Process jobs that depend on a completed job.
-        
-        Args:
-            completed_job_id: ID of the completed job
-            tenant_id: Tenant ID
-            
-        Returns:
-            int: Number of dependent jobs triggered
-        """
-        # Find jobs that depend on this one
-        dependencies = self.db.query(JobDependency).filter(
-            JobDependency.depends_on_job_id == completed_job_id
-        ).all()
-        
-        if not dependencies:
-            return 0
-        
-        # Get dependent job IDs
-        dependent_job_ids = [dep.job_id for dep in dependencies]
-        
-        # Get jobs
-        jobs = self.db.query(Job).filter(
-            Job.job_id.in_(dependent_job_ids),
-            Job.tenant_id == tenant_id,
-            Job.status == "active"
-        ).all()
-        
-        triggered_count = 0
-        
-        # Check each job's dependencies
-        for job in jobs:
-            # Get all dependencies for this job
-            job_deps = self.db.query(JobDependency).filter(
-                JobDependency.job_id == job.job_id
-            ).all()
-            
-            all_deps_satisfied = True
-            
-            # Check if all dependencies have recent successful executions
-            for dep in job_deps:
-                # Find recent successful execution
-                recent_success = self.db.query(JobExecution).filter(
-                    JobExecution.job_id == dep.depends_on_job_id,
-                    JobExecution.status == "completed",
-                    JobExecution.completed_at >= datetime.utcnow() - timedelta(hours=24)
-                ).first()
-                
-                if not recent_success:
-                    all_deps_satisfied = False
-                    break
-            
-            if all_deps_satisfied:
-                # All dependencies met, start job
-                try:
-                    await self.start_job(
-                        job_id=job.job_id,
-                        tenant_id=tenant_id,
-                        start_request=JobStartRequest(
-                            parameters={"triggered_by_dependency": str(completed_job_id)}
-                        )
-                    )
-                    triggered_count += 1
-                except Exception as e:
-                    logger.error(f"Error triggering dependent job {job.job_id}: {e}")
-        
-        return triggered_count
-    
-    def get_job_statistics(
-        self,
-        tenant_id: uuid.UUID,
-        job_id: Optional[uuid.UUID] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
+        job_id: uuid.UUID, 
+        tenant_id: uuid.UUID, 
+        user_id: uuid.UUID,
+        execution_id: Optional[uuid.UUID] = None,
+        background_tasks: Optional[Any] = None
     ) -> Dict[str, Any]:
         """
-        Get job execution statistics.
+        Stop a running job.
         
         Args:
+            job_id: Job ID
             tenant_id: Tenant ID
-            job_id: Optional job filter
-            start_date: Optional start date filter
-            end_date: Optional end date filter
+            user_id: User ID stopping the job
+            execution_id: Optional specific execution ID to stop
+            background_tasks: Optional background tasks to run
             
         Returns:
-            Dict[str, Any]: Job statistics
+            Dict[str, Any]: Stop result information
+            
+        Raises:
+            ValueError: If job not found or not running
         """
-        query = self.db.query(JobExecution).filter(JobExecution.tenant_id == tenant_id)
+        # Get job
+        job = self.db.query(Job).filter(
+            Job.job_id == job_id,
+            Job.tenant_id == tenant_id
+        ).first()
         
-        # Apply job filter
-        if job_id:
-            query = query.filter(JobExecution.job_id == job_id)
+        if not job:
+            raise ValueError(f"Job {job_id} not found")
         
-        # Apply date filters
-        if start_date:
-            query = query.filter(JobExecution.created_at >= start_date)
+        # Get running executions
+        if execution_id:
+            executions = self.db.query(JobExecution).filter(
+                JobExecution.execution_id == execution_id,
+                JobExecution.job_id == job_id,
+                JobExecution.tenant_id == tenant_id,
+                JobExecution.status.in_(["queued", "running"])
+            ).all()
+        else:
+            # Get all running executions for the job
+            executions = self.db.query(JobExecution).filter(
+                JobExecution.job_id == job_id,
+                JobExecution.tenant_id == tenant_id,
+                JobExecution.status.in_(["queued", "running"])
+            ).all()
         
-        if end_date:
-            query = query.filter(JobExecution.created_at <= end_date)
+        if not executions:
+            raise ValueError(f"No running executions found for job {job_id}")
         
-        # Total executions
-        total_executions = query.count()
+        # Stop each execution
+        stopped_count = 0
         
-        # Count by status
-        status_counts = {}
-        for status in ["completed", "failed", "cancelled", "running", "pending"]:
-            count = query.filter(JobExecution.status == status).count()
-            status_counts[status] = count
+        for execution in executions:
+            # Update status to cancelled
+            execution.status = "cancelled"
+            execution.ended_at = datetime.utcnow()
+            
+            # Send stop command to agent
+            if background_tasks:
+                background_tasks.add_task(
+                    self._send_stop_command,
+                    execution_id=execution.execution_id,
+                    agent_id=execution.agent_id,
+                    tenant_id=tenant_id
+                )
+            else:
+                # Execute immediately (synchronously)
+                self._send_stop_command(
+                    execution_id=execution.execution_id,
+                    agent_id=execution.agent_id,
+                    tenant_id=tenant_id
+                )
+                
+            stopped_count += 1
         
-        # Calculate average execution time for completed jobs
-        avg_time = self.db.query(func.avg(JobExecution.execution_time_ms)).filter(
-            JobExecution.tenant_id == tenant_id,
-            JobExecution.status == "completed",
-            JobExecution.execution_time_ms.isnot(None)
-        )
-        
-        if job_id:
-            avg_time = avg_time.filter(JobExecution.job_id == job_id)
-        
-        if start_date:
-            avg_time = avg_time.filter(JobExecution.created_at >= start_date)
-        
-        if end_date:
-            avg_time = avg_time.filter(JobExecution.created_at <= end_date)
-        
-        avg_execution_time = avg_time.scalar() or 0
+        # Save changes
+        self.db.commit()
         
         return {
-            "total_executions": total_executions,
-            "status_counts": status_counts,
-            "avg_execution_time_ms": round(avg_execution_time, 2),
-            "success_rate": round(status_counts.get("completed", 0) / total_executions * 100, 2) if total_executions > 0 else 0
+            "success": True,
+            "stopped_count": stopped_count,
+            "message": f"Stopped {stopped_count} executions"
         }
+    
+    def get_execution_logs(self, execution_id: uuid.UUID, tenant_id: uuid.UUID) -> Dict[str, Any]:
+        """
+        Get logs for a job execution.
+        
+        Args:
+            execution_id: Execution ID
+            tenant_id: Tenant ID
+            
+        Returns:
+            Dict[str, Any]: Log information
+            
+        Raises:
+            ValueError: If execution not found
+        """
+        # Get execution
+        execution = self.db.query(JobExecution).filter(
+            JobExecution.execution_id == execution_id,
+            JobExecution.tenant_id == tenant_id
+        ).first()
+        
+        if not execution:
+            raise ValueError(f"Execution {execution_id} not found")
+        
+        # Get logs from storage or database
+        logs = {
+            "execution_id": str(execution_id),
+            "status": execution.status,
+            "logs": []  # Placeholder for log entries
+        }
+        
+        # Implement log retrieval from storage or database
+        # This is a placeholder - actual implementation would depend on
+        # how logs are stored
+        
+        return logs
+    
+    def get_execution_screenshots(self, execution_id: uuid.UUID, tenant_id: uuid.UUID) -> List[Dict[str, Any]]:
+        """
+        Get screenshots for a job execution.
+        
+        Args:
+            execution_id: Execution ID
+            tenant_id: Tenant ID
+            
+        Returns:
+            List[Dict[str, Any]]: Screenshot information
+            
+        Raises:
+            ValueError: If execution not found
+        """
+        # Get execution
+        execution = self.db.query(JobExecution).filter(
+            JobExecution.execution_id == execution_id,
+            JobExecution.tenant_id == tenant_id
+        ).first()
+        
+        if not execution:
+            raise ValueError(f"Execution {execution_id} not found")
+        
+        # Get screenshots from storage or database
+        screenshots = []
+        
+        # Check if execution has results with screenshots
+        if execution.results and "screenshots" in execution.results:
+            screenshots = execution.results["screenshots"]
+        
+        return screenshots
+    
+    def _select_agent_for_job(self, job: Job) -> Optional[Agent]:
+        """
+        Select a suitable agent for a job.
+        
+        Args:
+            job: Job to select agent for
+            
+        Returns:
+            Optional[Agent]: Selected agent or None if none available
+        """
+        # Get online agents for tenant
+        agents = self.db.query(Agent).filter(
+            Agent.tenant_id == job.tenant_id,
+            Agent.status == "online"
+        ).all()
+        
+        # Filter agents by capabilities if job requires specific capabilities
+        if job.required_capabilities:
+            eligible_agents = []
+            for agent in agents:
+                if not agent.capabilities:
+                    continue
+                    
+                matches = True
+                for cap_name, cap_value in job.required_capabilities.items():
+                    if cap_name not in agent.capabilities:
+                        matches = False
+                        break
+                        
+                    if agent.capabilities[cap_name] != cap_value:
+                        matches = False
+                        break
+                        
+                if matches:
+                    eligible_agents.append(agent)
+                    
+            agents = eligible_agents
+        
+        # Return first suitable agent (or implement more sophisticated selection)
+        if agents:
+            return agents[0]
+        else:
+            return None
+    
+    async def _send_job_to_agent(self, execution_id: uuid.UUID, agent_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
+        """
+        Send a job to an agent.
+        
+        Args:
+            execution_id: Execution ID
+            agent_id: Agent ID
+            tenant_id: Tenant ID
+        """
+        # Get execution details
+        execution = self.db.query(JobExecution).filter(
+            JobExecution.execution_id == execution_id
+        ).first()
+        
+        if not execution:
+            logger.error(f"Cannot send job: execution {execution_id} not found")
+            return
+        
+        # Get job details
+        job = None
+        if execution.job_id:
+            job = self.db.query(Job).filter(
+                Job.job_id == execution.job_id
+            ).first()
+        
+        # Get package details
+        package = None
+        if execution.package_id:
+            package = self.db.query(Package).filter(
+                Package.package_id == execution.package_id
+            ).first()
+        
+        # Create command message
+        command = {
+            "type": "execute_job",
+            "execution_id": str(execution_id),
+            "job_id": str(execution.job_id) if execution.job_id else None,
+            "package_id": str(execution.package_id) if execution.package_id else None,
+            "parameters": execution.parameters,
+            "timeout_seconds": job.timeout_seconds if job else 3600,
+            "priority": execution.priority
+        }
+        
+        # Update execution status
+        execution.status = "sent"
+        execution.sent_at = datetime.utcnow()
+        self.db.commit()
+        
+        # Send message to agent
+        message_producer = get_message_producer()
+        await message_producer.send_message(
+            exchange="agents",
+            routing_key=f"agent.{agent_id}.command",
+            message_data={
+                "agent_id": str(agent_id),
+                "tenant_id": str(tenant_id),
+                "command": command
+            }
+        )
+    
+    async def _send_stop_command(self, execution_id: uuid.UUID, agent_id: uuid.UUID, tenant_id: uuid.UUID) -> None:
+        """
+        Send a stop command to an agent.
+        
+        Args:
+            execution_id: Execution ID
+            agent_id: Agent ID
+            tenant_id: Tenant ID
+        """
+        # Create command message
+        command = {
+            "type": "stop_job",
+            "execution_id": str(execution_id)
+        }
+        
+        # Send message to agent
+        message_producer = get_message_producer()
+        await message_producer.send_message(
+            exchange="agents",
+            routing_key=f"agent.{agent_id}.command",
+            message_data={
+                "agent_id": str(agent_id),
+                "tenant_id": str(tenant_id),
+                "command": command
+            }
+        )

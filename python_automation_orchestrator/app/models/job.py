@@ -8,7 +8,7 @@ for managing automation jobs and their execution.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, String, DateTime, Text, Integer, JSON, ForeignKey, UniqueConstraint, Table
+from sqlalchemy import Column, String, DateTime, Text, Integer, JSON, ForeignKey, UniqueConstraint, Table, Boolean
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
@@ -100,9 +100,12 @@ class JobExecution(Base):
     # Primary key
     execution_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     
-    # Job foreign key
-    job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.job_id"), nullable=False)
+    # Job foreign key (nullable to support direct package executions)
+    job_id = Column(UUID(as_uuid=True), ForeignKey("jobs.job_id"), nullable=True)
     job = relationship("Job", back_populates="executions")
+    
+    # Flag to indicate if this is a direct package execution (not tied to a job)
+    is_direct_execution = Column(Boolean, default=False)
     
     # Tenant foreign key
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.tenant_id"), nullable=False)

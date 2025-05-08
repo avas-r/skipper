@@ -19,3 +19,4 @@ class TokenPayload(BaseModel):
     sub: Optional[str] = None
     exp: int
     type: str = "access"  # "access" or "refresh"
+    agent_id: Optional[str] = None  # Set for agent tokens

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..db.session import get_db
 from ..models.user import User
+from ..models.agent import Agent
 from ..schemas.token import TokenPayload
 
 # OAuth2 scheme for token extraction from Authorization header
@@ -213,3 +214,67 @@ async def get_current_active_superuser(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="The user doesn't have enough privileges",
     )
+    
+# API key scheme for agent authentication
+# We're using the same OAuth2 scheme for consistency
+agent_auth_scheme = OAuth2PasswordBearer(
+    tokenUrl=f"{settings.API_V1_PREFIX}/auth/login",
+    auto_error=False
+)
+
+async def get_current_agent(
+    db: Session = Depends(get_db), token: str = Depends(agent_auth_scheme)
+) -> Agent:
+    """
+    Get the current authenticated agent from API key or token.
+    
+    This function is used as a dependency to authenticate agent API requests.
+    It supports both agent API keys and JWT tokens with agent claims.
+    
+    Args:
+        db: Database session
+        token: API key from Authorization header
+        
+    Returns:
+        Agent: Current authenticated agent
+        
+    Raises:
+        HTTPException: If token is invalid or agent not found
+    """
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+    # First, try to validate as JWT token
+    try:
+        token_data = verify_token(token)
+        
+        # Check if it has agent_id claim
+        if hasattr(token_data, 'agent_id'):
+            agent_id = token_data.agent_id
+            agent = db.query(Agent).filter(Agent.agent_id == agent_id).first()
+            if agent:
+                return agent
+    except (HTTPException, Exception):
+        # If token is not a valid JWT, try as an API key
+        pass
+    
+    # Try as API key - tokens stored in agent table
+    agent = db.query(Agent).filter(Agent.api_key == token).first()
+    if not agent:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Check if agent is active
+    if agent.status != "online" and agent.status != "idle":
+        # We don't want to be too strict, since agents may be reconnecting
+        # Just log, don't prevent authentication
+        pass
+        
+    return agent

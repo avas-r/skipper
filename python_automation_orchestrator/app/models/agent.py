@@ -79,6 +79,7 @@ class Agent(Base):
     name = Column(String(255), nullable=False)
     machine_id = Column(String(255), nullable=False)
     ip_address = Column(INET, nullable=True)
+    api_key = Column(String(255), nullable=True)
     
     # Status and version
     status = Column(String(20), nullable=False, default="offline")
