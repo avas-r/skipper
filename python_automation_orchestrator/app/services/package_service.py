@@ -805,3 +805,213 @@ class PackageService:
                 md5.update(chunk)
                 
         return md5.hexdigest()
+        
+    def list_packages_for_agent(self, agent_id: uuid.UUID, tenant_id: uuid.UUID) -> List[Dict[str, Any]]:
+        """
+        List packages available for an agent.
+        
+        Args:
+            agent_id: Agent ID
+            tenant_id: Tenant ID
+            
+        Returns:
+            List[Dict[str, Any]]: List of packages
+        """
+        # Get agent
+        agent = self.db.query(Agent).filter(
+            Agent.agent_id == agent_id,
+            Agent.tenant_id == tenant_id
+        ).first()
+        
+        if not agent:
+            return []
+            
+        # Get packages for tenant
+        packages = self.db.query(Package).filter(
+            Package.tenant_id == tenant_id,
+            Package.status.in_(["production", "testing"])
+        ).all()
+        
+        # Format for agent consumption
+        return [
+            {
+                "package_id": str(pkg.package_id),
+                "name": pkg.name,
+                "version": pkg.version,
+                "description": pkg.description,
+                "entry_point": pkg.entry_point,
+                "status": pkg.status,
+                "md5_hash": pkg.md5_hash
+            }
+            for pkg in packages
+        ]
+        
+    def process_agent_package_upload(
+        self,
+        file: UploadFile,
+        name: str,
+        version: str,
+        description: Optional[str],
+        entry_point: Optional[str],
+        tenant_id: uuid.UUID,
+        agent_id: uuid.UUID
+    ) -> Package:
+        """
+        Process and save a package uploaded by an agent.
+        
+        Args:
+            file: Uploaded package file
+            name: Package name
+            version: Package version
+            description: Package description
+            entry_point: Package entry point
+            tenant_id: Tenant ID
+            agent_id: Agent ID
+            
+        Returns:
+            Package: Created or updated package
+            
+        Raises:
+            ValueError: If package is invalid or upload fails
+        """
+        # Ensure temp directory exists
+        temp_dir = os.path.join(settings.TEMP_FOLDER, str(uuid.uuid4()))
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        try:
+            # Save file to temp directory
+            zip_path = os.path.join(temp_dir, "package.zip")
+            with open(zip_path, "wb") as f:
+                f.write(file.file.read())
+                
+            # Validate zip file
+            if not zipfile.is_zipfile(zip_path):
+                raise ValueError("Invalid zip file")
+                
+            # Extract zip file
+            extract_dir = os.path.join(temp_dir, "extracted")
+            os.makedirs(extract_dir, exist_ok=True)
+            
+            with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                zip_ref.extractall(extract_dir)
+                
+            # Validate entry point if provided
+            if entry_point:
+                entry_point_path = os.path.join(extract_dir, entry_point)
+                if not os.path.exists(entry_point_path):
+                    raise ValueError(f"Entry point not found: {entry_point}")
+            else:
+                # Try to find main.py
+                if os.path.exists(os.path.join(extract_dir, "main.py")):
+                    entry_point = "main.py"
+                else:
+                    # Find first Python file
+                    for root, _, files in os.walk(extract_dir):
+                        for file in files:
+                            if file.endswith(".py"):
+                                rel_path = os.path.relpath(os.path.join(root, file), extract_dir)
+                                entry_point = rel_path
+                                break
+                        if entry_point:
+                            break
+                            
+                    if not entry_point:
+                        raise ValueError("No Python files found in package")
+                        
+            # Calculate MD5 hash
+            md5_hash = self._calculate_file_md5(zip_path)
+            
+            # Check if package exists
+            existing = self.db.query(Package).filter(
+                Package.tenant_id == tenant_id,
+                Package.name == name,
+                Package.version == version
+            ).first()
+            
+            # Create storage path
+            storage_path = f"tenants/{tenant_id}/packages/{name}/{version}"
+            
+            if existing:
+                # Update existing package
+                existing.description = description or existing.description
+                existing.entry_point = entry_point
+                existing.md5_hash = md5_hash
+                existing.updated_at = datetime.utcnow()
+                
+                package = existing
+                
+                # Create audit log
+                audit_log = AuditLog(
+                    tenant_id=tenant_id,
+                    action="update_package",
+                    entity_type="package",
+                    entity_id=package.package_id,
+                    details={
+                        "name": package.name,
+                        "version": package.version,
+                        "md5_hash": md5_hash,
+                        "agent_id": str(agent_id)
+                    }
+                )
+                self.db.add(audit_log)
+            else:
+                # Create new package
+                package = Package(
+                    package_id=uuid.uuid4(),
+                    tenant_id=tenant_id,
+                    name=name,
+                    description=description,
+                    version=version,
+                    main_file_path=entry_point,
+                    storage_path=storage_path,
+                    entry_point=entry_point,
+                    md5_hash=md5_hash,
+                    status="development"
+                )
+                
+                self.db.add(package)
+                
+                # Create audit log
+                audit_log = AuditLog(
+                    tenant_id=tenant_id,
+                    action="create_package",
+                    entity_type="package",
+                    entity_id=package.package_id,
+                    details={
+                        "name": package.name,
+                        "version": package.version,
+                        "md5_hash": md5_hash,
+                        "agent_id": str(agent_id)
+                    }
+                )
+                self.db.add(audit_log)
+                
+            self.db.commit()
+            self.db.refresh(package)
+            
+            # Upload to object storage
+            object_name = f"{package.storage_path}/package.zip"
+            
+            with open(zip_path, "rb") as f:
+                self.storage.upload_bytes(
+                    f.read(),
+                    object_name,
+                    content_type="application/zip",
+                    metadata={
+                        "tenant_id": str(tenant_id),
+                        "package_id": str(package.package_id),
+                        "name": package.name,
+                        "version": package.version,
+                        "md5_hash": md5_hash,
+                        "uploaded_by_agent": str(agent_id)
+                    }
+                )
+                
+            return package
+            
+        finally:
+            # Clean up temporary directory
+            try:
+                shutil.rmtree(temp_dir)
+            except Exception as e:
+                logger.warning(f"Error cleaning up temp directory: {e}")

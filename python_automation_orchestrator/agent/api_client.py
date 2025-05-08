@@ -301,6 +301,74 @@ class ApiClient:
             logger.error(f"Error getting asset: {e}")
             return None
             
+    def upload_package(self, package_path, package_info):
+        """Upload automation package
+        
+        Args:
+            package_path (str): Path to the package zip file
+            package_info (dict): Package metadata
+                
+        Returns:
+            dict: The uploaded package information or None if failed
+        """
+        try:
+            url = f"{self.base_url}/api/v1/packages/upload"
+            
+            # Prepare the form data
+            files = {
+                'file': ('package.zip', open(package_path, 'rb'), 'application/zip')
+            }
+            
+            # Add metadata fields
+            data = {}
+            if 'name' in package_info:
+                data['name'] = package_info['name']
+            if 'description' in package_info:
+                data['description'] = package_info['description']
+            if 'version' in package_info:
+                data['version'] = package_info['version']
+            if 'entry_point' in package_info:
+                data['entry_point'] = package_info['entry_point']
+            if 'tags' in package_info:
+                data['tags'] = ','.join(package_info['tags']) if isinstance(package_info['tags'], list) else package_info['tags']
+                
+            # Upload the package
+            response = self.session.post(url, files=files, data=data)
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.warning(f"Failed to upload package: {response.status_code} - {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error uploading package: {e}")
+            return None
+            
+    def get_job_execution(self, execution_id):
+        """Get information about a job execution
+        
+        Args:
+            execution_id (str): The execution ID
+                
+        Returns:
+            dict: The execution information or None if failed
+        """
+        try:
+            url = f"{self.base_url}/api/v1/job-executions/{execution_id}"
+            
+            response = self.session.get(url)
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.warning(f"Failed to get execution: {response.status_code} - {response.text}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error getting execution: {e}")
+            return None
+            
     def log_step(self, execution_id, step_id, description, status, data=None, take_screenshot=False):
         """Log a job execution step
         

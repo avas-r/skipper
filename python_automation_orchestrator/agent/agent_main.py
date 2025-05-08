@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 from cryptography.fernet import Fernet
 from threading import Thread, Lock
 from pathlib import Path
+from typing import Dict, Any, List, Optional
 import urllib3
 
 # Try to import optional UI dependencies
@@ -58,6 +59,8 @@ logger = logging.getLogger("orchestrator-agent")
 from agent.agent_config import AgentConfig
 from agent.api_client import ApiClient
 from agent.auto_login_manager import AutoLoginAgentManager, configure_windows_auto_login, configure_session_persistence, setup_agent_autostart
+from agent.package_manager import PackageManager
+from agent.job_executor import JobExecutor
 
 def send_heartbeat_periodically(api_client, interval_seconds):
     """Send heartbeat to orchestrator periodically"""
@@ -81,11 +84,54 @@ def send_heartbeat_periodically(api_client, interval_seconds):
             logger.error(f"Error in heartbeat thread: {e}")
             time.sleep(interval_seconds * 2)  # Wait longer on error
 
-def poll_for_jobs(api_client, config):
+def poll_for_jobs(api_client, config, package_manager=None, job_executor=None):
     """Poll for pending jobs from orchestrator"""
-    # This would be implemented in a full agent
-    # For this example, we're focusing on the auto-login functionality
-    pass
+    try:
+        # Get pending jobs
+        pending_jobs = api_client.get_pending_jobs()
+        
+        if not pending_jobs:
+            return
+            
+        logger.info(f"Received {len(pending_jobs)} pending jobs")
+        
+        # Process each job
+        for job in pending_jobs:
+            job_type = job.get("job_type", "standard")
+            
+            if job_type == "package_execution":
+                # Handle package execution
+                if package_manager:
+                    package_id = job.get("package_id")
+                    parameters = job.get("parameters", {})
+                    execution_id = job.get("execution_id")
+                    
+                    if not package_id:
+                        logger.error(f"Missing package_id in job: {job}")
+                        continue
+                        
+                    logger.info(f"Executing package {package_id} with execution ID {execution_id}")
+                    
+                    # Execute in a separate thread to not block the polling
+                    thread = Thread(
+                        target=package_manager.execute_package,
+                        args=(package_id, parameters, execution_id),
+                        daemon=True
+                    )
+                    thread.start()
+                else:
+                    logger.warning("Package execution requested but package manager not available")
+            else:
+                # Handle standard job execution
+                if job_executor:
+                    logger.info(f"Executing job: {job.get('job_id')}")
+                    job_executor.execute_job(job)
+                else:
+                    logger.warning("Job execution requested but job executor not available")
+    except Exception as e:
+        logger.error(f"Error polling for jobs: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
 
 def setup_system_tray(config):
     """Set up system tray icon for agent"""
@@ -192,10 +238,16 @@ def main():
         )
         heartbeat_thread.start()
         
+        # Create package manager
+        package_manager = PackageManager(api_client, config)
+        
+        # Create job executor
+        job_executor = JobExecutor(api_client, config)
+        
         # Start job polling thread
         job_thread = Thread(
             target=poll_for_jobs,
-            args=(api_client, config),
+            args=(api_client, config, package_manager, job_executor),
             daemon=True
         )
         job_thread.start()

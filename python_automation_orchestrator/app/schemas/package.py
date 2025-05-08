@@ -2,6 +2,7 @@
 Package schemas for the orchestrator API.
 
 This module defines Pydantic models for package-related API requests and responses.
+Includes schemas for agent package operations.
 """
 
 import uuid
@@ -118,3 +119,31 @@ class PackageDeployRequest(BaseModel):
         if v not in valid_environments:
             raise ValueError(f"Invalid environment. Must be one of: {', '.join(valid_environments)}")
         return v
+        
+# New schemas for agent package operations
+
+class PackageStatusUpdate(BaseModel):
+    """Schema for package execution status update"""
+    status: str = Field(..., description="Execution status")
+    progress: Optional[float] = Field(None, description="Execution progress percentage")
+    results: Optional[Dict[str, Any]] = Field(None, description="Execution results")
+    error: Optional[str] = Field(None, description="Error message if failed")
+    
+class PackageExecuteRequest(BaseModel):
+    """Schema for package execution request"""
+    package_id: uuid.UUID = Field(..., description="Package ID to execute")
+    parameters: Optional[Dict[str, Any]] = Field({}, description="Execution parameters")
+    
+class AgentPackageInfo(BaseModel):
+    """Schema for agent package information"""
+    package_id: uuid.UUID = Field(..., description="Package ID")
+    name: str = Field(..., description="Package name")
+    version: str = Field(..., description="Package version")
+    description: Optional[str] = Field(None, description="Package description")
+    entry_point: str = Field(..., description="Entry point")
+    status: str = Field(..., description="Package status")
+    md5_hash: Optional[str] = Field(None, description="MD5 hash of package")
+    
+    class Config:
+        """Configuration for Pydantic model"""
+        from_attributes = True

@@ -6,6 +6,7 @@ This module handles automation package management:
 - Version management and updates
 - Dependency resolution
 - Package validation
+- Package execution
 """
 
 import os
@@ -18,8 +19,11 @@ import zipfile
 import tempfile
 import subprocess
 import sys
+import importlib.util
+import uuid
 from pathlib import Path
 from datetime import datetime
+from typing import Dict, Any, Optional, Tuple, List
 
 logger = logging.getLogger("orchestrator-agent")
 
@@ -36,6 +40,7 @@ class PackageManager:
         self.api_client = api_client
         self.config = config
         self.packages_dir = config.get("packages_dir")
+        self.active_executions = {}
         
         # Ensure packages directory exists
         os.makedirs(self.packages_dir, exist_ok=True)
@@ -210,6 +215,280 @@ class PackageManager:
         
         # Return validation result
         return len(issues) == 0, issues
+    
+    def execute_package(self, package_id: str, parameters: Dict[str, Any] = None, execution_id: str = None) -> Tuple[bool, str, Dict[str, Any]]:
+        """Execute a package with the provided parameters
+        
+        Args:
+            package_id (str): The package ID to execute
+            parameters (Dict[str, Any], optional): Parameters to pass to the package
+            execution_id (str, optional): An execution ID to use, or auto-generate if None
+            
+        Returns:
+            Tuple[bool, str, Dict[str, Any]]: (success, execution_id, result)
+        """
+        # Generate an execution ID if not provided
+        if not execution_id:
+            execution_id = str(uuid.uuid4())
+            
+        # Get the package
+        package_dir = self.get_package(package_id)
+        if not package_dir:
+            return False, execution_id, {"error": f"Failed to download package {package_id}"}
+            
+        # Verify the package
+        is_valid, issues = self.verify_package(package_dir)
+        if not is_valid:
+            return False, execution_id, {"error": f"Invalid package: {', '.join(issues)}"}
+            
+        # Install dependencies
+        if not self.install_dependencies(package_dir):
+            return False, execution_id, {"error": "Failed to install package dependencies"}
+            
+        # Create execution workspace
+        workspace_dir = os.path.join(self.config.get("workspace_dir", "workspaces"), execution_id)
+        os.makedirs(workspace_dir, exist_ok=True)
+        
+        # Find the main script
+        main_script = self._find_main_script(package_dir)
+        if not main_script:
+            return False, execution_id, {"error": "No main script found in package"}
+            
+        try:
+            # Set up execution context
+            from .execution_context import AutomationExecutionContext
+            
+            # Create execution context
+            context = AutomationExecutionContext(
+                self.api_client,
+                execution_id,
+                "direct_execution",  # No specific job ID for direct package execution
+                package_id,
+                parameters or {}
+            )
+            
+            # Set up workspace
+            context.setup_workspace(os.path.dirname(workspace_dir))
+            
+            # Add to active executions
+            self.active_executions[execution_id] = {
+                "package_id": package_id,
+                "start_time": time.time(),
+                "status": "running",
+                "context": context
+            }
+            
+            # Send status update
+            self.api_client.update_job_status(execution_id, "running")
+            
+            # Load and execute the main module
+            result = self._execute_package_module(main_script, context)
+            
+            # Update status
+            success = True
+            if isinstance(result, bool):
+                success = result
+            elif isinstance(result, int):
+                success = (result == 0)
+            elif isinstance(result, dict) and "success" in result:
+                success = result["success"]
+                
+            # Update execution status
+            status = "completed" if success else "failed"
+            
+            # Update active executions
+            if execution_id in self.active_executions:
+                self.active_executions[execution_id]["status"] = status
+                self.active_executions[execution_id]["end_time"] = time.time()
+                self.active_executions[execution_id]["result"] = result
+                
+            # Send status update
+            self.api_client.update_job_status(
+                execution_id, 
+                status,
+                error=None if success else "Package execution failed",
+                results=result if isinstance(result, dict) else {"result": result}
+            )
+            
+            return success, execution_id, result if isinstance(result, dict) else {"result": result}
+            
+        except Exception as e:
+            logger.error(f"Error executing package {package_id}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            
+            # Update execution status
+            if execution_id in self.active_executions:
+                self.active_executions[execution_id]["status"] = "failed"
+                self.active_executions[execution_id]["end_time"] = time.time()
+                self.active_executions[execution_id]["error"] = str(e)
+                
+            # Send status update
+            self.api_client.update_job_status(
+                execution_id, 
+                "failed",
+                error=str(e)
+            )
+            
+            return False, execution_id, {"error": str(e)}
+    
+    def _find_main_script(self, package_dir):
+        """Find the main script in a package directory
+        
+        Args:
+            package_dir (str): Path to the package directory
+            
+        Returns:
+            str: Path to the main script or None if not found
+        """
+        # Check for package.json with main field
+        metadata_file = os.path.join(package_dir, "package.json")
+        if os.path.isfile(metadata_file):
+            try:
+                with open(metadata_file, "r") as f:
+                    metadata = json.load(f)
+                    
+                if "main" in metadata:
+                    main_file = os.path.join(package_dir, metadata["main"])
+                    if os.path.isfile(main_file):
+                        return main_file
+            except:
+                pass
+        
+        # Check for main.py
+        main_py = os.path.join(package_dir, "main.py")
+        if os.path.isfile(main_py):
+            return main_py
+            
+        # Search for any Python file
+        for root, _, files in os.walk(package_dir):
+            for file in files:
+                if file.endswith(".py"):
+                    return os.path.join(root, file)
+                    
+        return None
+        
+    def _execute_package_module(self, script_path, context):
+        """Load and execute a Python module
+        
+        Args:
+            script_path (str): Path to the main script
+            context (AutomationExecutionContext): Execution context
+            
+        Returns:
+            Any: Result from the main function
+        """
+        try:
+            # Generate a unique module name
+            module_name = f"orchestrator_package_{Path(script_path).stem}_{int(time.time())}"
+            
+            # Create spec
+            spec = importlib.util.spec_from_file_location(module_name, script_path)
+            if spec is None:
+                raise ValueError(f"Failed to create module spec for {script_path}")
+                
+            # Create module from spec
+            module = importlib.util.module_from_spec(spec)
+            
+            # Add the script directory to sys.path
+            script_dir = os.path.dirname(script_path)
+            if script_dir not in sys.path:
+                sys.path.insert(0, script_dir)
+                
+            # Execute the module
+            spec.loader.exec_module(module)
+            
+            # Find the main function
+            main_func = getattr(module, "main", None)
+            if not main_func or not callable(main_func):
+                raise ValueError(f"No main function found in {script_path}")
+                
+            # Execute the main function with context
+            return main_func(context)
+            
+        except Exception as e:
+            logger.error(f"Error executing module {script_path}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise
+            
+    def get_execution_status(self, execution_id: str) -> Dict[str, Any]:
+        """Get status of a package execution
+        
+        Args:
+            execution_id (str): The execution ID
+            
+        Returns:
+            Dict[str, Any]: Status information
+        """
+        if execution_id in self.active_executions:
+            execution = self.active_executions[execution_id]
+            elapsed = time.time() - execution["start_time"]
+            
+            return {
+                "execution_id": execution_id,
+                "package_id": execution["package_id"],
+                "status": execution["status"],
+                "start_time": datetime.fromtimestamp(execution["start_time"]).isoformat(),
+                "elapsed_seconds": elapsed,
+                "end_time": datetime.fromtimestamp(execution["end_time"]).isoformat() if "end_time" in execution else None,
+                "result": execution.get("result"),
+                "error": execution.get("error")
+            }
+        
+        # If not found in active executions, try to get from API
+        execution = self.api_client.get_job_execution(execution_id)
+        if execution:
+            return execution
+            
+        return {"error": f"Execution {execution_id} not found"}
+        
+    def list_active_executions(self) -> List[Dict[str, Any]]:
+        """List all active package executions
+        
+        Returns:
+            List[Dict[str, Any]]: List of execution information
+        """
+        return [
+            {
+                "execution_id": execution_id,
+                "package_id": info["package_id"],
+                "status": info["status"],
+                "start_time": datetime.fromtimestamp(info["start_time"]).isoformat(),
+                "elapsed_seconds": time.time() - info["start_time"]
+            }
+            for execution_id, info in self.active_executions.items()
+            if info["status"] == "running"
+        ]
+    
+    def upload_package(self, package_path: str, package_info: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Upload a package to the orchestrator
+        
+        Args:
+            package_path (str): Path to the package file (zip)
+            package_info (Dict[str, Any]): Package information
+            
+        Returns:
+            Optional[Dict[str, Any]]: The uploaded package information or None if failed
+        """
+        try:
+            # Check if the file exists
+            if not os.path.exists(package_path):
+                logger.error(f"Package file not found: {package_path}")
+                return None
+                
+            # Validate package file
+            if not zipfile.is_zipfile(package_path):
+                logger.error(f"Invalid package file (not a zip): {package_path}")
+                return None
+                
+            # Upload to server
+            result = self.api_client.upload_package(package_path, package_info)
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error uploading package: {e}")
+            return None
     
     def clean_packages(self, max_age_days=30):
         """Clean up old packages from the cache
