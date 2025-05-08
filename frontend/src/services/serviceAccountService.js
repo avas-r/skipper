@@ -1,3 +1,10 @@
+/**
+ * Service account service for interacting with the service account API.
+ * 
+ * This service provides functions to manage service accounts:
+ * - List, create, update, delete service accounts
+ */
+
 import axios from 'axios';
 
 // Get API URL from environment variable, with fallback
@@ -23,10 +30,38 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Get all service accounts
-export const getServiceAccounts = async () => {
+/**
+ * Get all service accounts.
+ * 
+ * @param {Object} filters - Optional filter parameters
+ * @param {string} filters.status - Filter by account status
+ * @param {string} filters.search - Search term
+ * @param {number} filters.skip - Number of records to skip (pagination)
+ * @param {number} filters.limit - Maximum records to return (pagination)
+ * @returns {Promise<Array>} List of service accounts
+ */
+export const getServiceAccounts = async (filters = {}) => {
   try {
-    const response = await apiClient.get('/api/v1/service-accounts');
+    // Build query parameters
+    const params = new URLSearchParams();
+    
+    if (filters.status) {
+      params.append('status', filters.status);
+    }
+    
+    if (filters.search) {
+      params.append('search', filters.search);
+    }
+    
+    if (filters.skip !== undefined) {
+      params.append('skip', filters.skip);
+    }
+    
+    if (filters.limit !== undefined) {
+      params.append('limit', filters.limit);
+    }
+    
+    const response = await apiClient.get('/api/v1/service-accounts', { params });
     return response.data;
   } catch (error) {
     throw new Error(
@@ -35,7 +70,12 @@ export const getServiceAccounts = async () => {
   }
 };
 
-// Get a single service account by ID
+/**
+ * Get a single service account by ID.
+ * 
+ * @param {string} accountId - Service account ID
+ * @returns {Promise<Object>} Service account data
+ */
 export const getServiceAccountById = async (accountId) => {
   try {
     const response = await apiClient.get(`/api/v1/service-accounts/${accountId}`);
@@ -47,7 +87,12 @@ export const getServiceAccountById = async (accountId) => {
   }
 };
 
-// Create a new service account
+/**
+ * Create a new service account.
+ * 
+ * @param {Object} accountData - Service account data
+ * @returns {Promise<Object>} Created service account
+ */
 export const createServiceAccount = async (accountData) => {
   try {
     const response = await apiClient.post('/api/v1/service-accounts', accountData);
@@ -59,7 +104,13 @@ export const createServiceAccount = async (accountData) => {
   }
 };
 
-// Update an existing service account
+/**
+ * Update an existing service account.
+ * 
+ * @param {string} accountId - Service account ID
+ * @param {Object} accountData - Service account update data
+ * @returns {Promise<Object>} Updated service account
+ */
 export const updateServiceAccount = async (accountId, accountData) => {
   try {
     const response = await apiClient.put(`/api/v1/service-accounts/${accountId}`, accountData);
@@ -71,7 +122,12 @@ export const updateServiceAccount = async (accountId, accountData) => {
   }
 };
 
-// Delete a service account
+/**
+ * Delete a service account.
+ * 
+ * @param {string} accountId - Service account ID
+ * @returns {Promise<boolean>} True if deletion successful
+ */
 export const deleteServiceAccount = async (accountId) => {
   try {
     await apiClient.delete(`/api/v1/service-accounts/${accountId}`);

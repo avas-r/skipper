@@ -7,7 +7,6 @@ This package contains all the FastAPI endpoint modules.
 # Make all endpoint modules available
 from ...api_v1.endpoints import (
     agents_endpoint,
-    analytics,
     assets_endpoint,
     auth_endpoint,
     executions_endpoint,

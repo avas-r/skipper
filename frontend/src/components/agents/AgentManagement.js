@@ -1,16 +1,30 @@
-//skipper/frontend/src/components/agents/AgentManagement.js
+import React, { useState, useEffect, useCallback } from 'react';
+import { 
+  Camera, Plus, Edit, Trash2, RefreshCw, Play, 
+  Pause, Monitor, CheckCircle, AlertTriangle, X, 
+  LogIn, LogOut, ChevronDown, ChevronUp, Search
+} from 'lucide-react';
 
-import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, RefreshCw, Play, Pause, 
-    CheckCircle, AlertTriangle, X, LogIn, LogOut, 
-    ChevronDown, ChevronUp, Search } from 'lucide-react';
+// Import API services
+import { 
+  getAgents, 
+  createAgent, 
+  updateAgent, 
+  deleteAgent, 
+  getAgentLogs, 
+  sendAgentCommand, 
+  enableAgentAutoLogin, 
+  disableAgentAutoLogin
+} from '../../services/agentService';
 
-function AgentManagement({ agents: initialAgents, serviceAccounts: initialAccounts }) {
+import { getServiceAccounts } from '../../services/serviceAccountService';
+
+function AgentManagement() {
   const [tabIndex, setTabIndex] = useState(0);
-  const [agents, setAgents] = useState(initialAgents);
-  const [serviceAccounts, setServiceAccounts] = useState(initialAccounts);
+  const [agents, setAgents] = useState([]);
+  const [serviceAccounts, setServiceAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error] = useState(null);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -42,12 +56,48 @@ function AgentManagement({ agents: initialAgents, serviceAccounts: initialAccoun
     session_type: 'windows'
   });
 
+  // Function to fetch agents data
+  const fetchAgents = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const filters = {};
+      if (searchTerm) {
+        filters.search = searchTerm;
+      }
+      const agentsData = await getAgents(filters);
+      setAgents(agentsData);
+    } catch (err) {
+      console.error('Failed to fetch agents:', err);
+      setError('Failed to load agents. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [searchTerm]);
+
+  // Function to fetch service accounts
+  const fetchServiceAccounts = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const serviceAccountsData = await getServiceAccounts();
+      setServiceAccounts(serviceAccountsData);
+    } catch (err) {
+      console.error('Failed to fetch service accounts:', err);
+      setError('Failed to load service accounts. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Load data on component mount or when dependencies change
   useEffect(() => {
-        // When initialAgents / initialAccounts change, load them
-       setAgents(initialAgents);
-        setServiceAccounts(initialAccounts);
-        setLoading(false);
-      }, [initialAgents, initialAccounts]);
+    if (tabIndex === 0) {
+      fetchAgents();
+    } else if (tabIndex === 1) {
+      fetchServiceAccounts();
+    }
+  }, [tabIndex, fetchAgents, fetchServiceAccounts]);
 
   const handleTabChange = (newValue) => {
     setTabIndex(newValue);
@@ -61,11 +111,11 @@ function AgentManagement({ agents: initialAgents, serviceAccounts: initialAccoun
   };
 
   const handleRefresh = () => {
-    setLoading(true);
-    // In a real app, this would refresh the data from the API
-    setTimeout(() => {
-      setLoading(false);
-    }, 1000);
+    if (tabIndex === 0) {
+      fetchAgents();
+    } else if (tabIndex === 1) {
+      fetchServiceAccounts();
+    }
   };
 
   const handleOpenDialog = (agent = null) => {
@@ -107,36 +157,30 @@ function AgentManagement({ agents: initialAgents, serviceAccounts: initialAccoun
   const handleTagsChange = (e) => {
     setAgentFormData(prev => ({
       ...prev,
-      tags: e.target.value.split(',').map(tag => tag.trim())
+      tags: e.target.value.split(',').map(tag => tag.trim()).filter(tag => tag)
     }));
   };
 
-  const handleSubmitAgent = () => {
-    // In a real app, this would call the API to create/update an agent
-    if (selectedAgent) {
-      // Update existing agent
-      setAgents(prevAgents => 
-        prevAgents.map(agent => 
-          agent.agent_id === selectedAgent.agent_id 
-            ? { ...agent, ...agentFormData } 
-            : agent
-        )
-      );
-    } else {
-      // Create new agent
-      const newAgent = {
-        agent_id: Date.now().toString(), // Mock ID generation
-        ...agentFormData,
-        ip_address: '',
-        version: '1.0.0',
-        last_heartbeat: null,
-        capabilities: {},
-        auto_login_enabled: false
-      };
-      setAgents(prev => [...prev, newAgent]);
+  const handleSubmitAgent = async () => {
+    try {
+      if (selectedAgent) {
+        // Update existing agent
+        const updatedAgent = await updateAgent(selectedAgent.agent_id, agentFormData);
+        setAgents(prevAgents => 
+          prevAgents.map(agent => 
+            agent.agent_id === selectedAgent.agent_id ? updatedAgent : agent
+          )
+        );
+      } else {
+        // Create new agent
+        const newAgent = await createAgent(agentFormData);
+        setAgents(prev => [...prev, newAgent]);
+      }
+      handleCloseDialog();
+    } catch (err) {
+      console.error('Failed to save agent:', err);
+      setError(err.message || 'Failed to save agent. Please try again.');
     }
-    
-    handleCloseDialog();
   };
 
   const handleDeleteClick = (agent) => {
@@ -144,12 +188,17 @@ function AgentManagement({ agents: initialAgents, serviceAccounts: initialAccoun
     setDeleteDialogOpen(true);
   };
 
-  const handleConfirmDelete = () => {
-    // In a real app, this would call the API to delete the agent
-    setAgents(prevAgents => 
-      prevAgents.filter(agent => agent.agent_id !== agentToDelete.agent_id)
-    );
-    setDeleteDialogOpen(false);
+  const handleConfirmDelete = async () => {
+    try {
+      await deleteAgent(agentToDelete.agent_id);
+      setAgents(prevAgents => 
+        prevAgents.filter(agent => agent.agent_id !== agentToDelete.agent_id)
+      );
+      setDeleteDialogOpen(false);
+    } catch (err) {
+      console.error('Failed to delete agent:', err);
+      setError(err.message || 'Failed to delete agent. Please try again.');
+    }
   };
 
   // Service account handlers
@@ -176,16 +225,46 @@ function AgentManagement({ agents: initialAgents, serviceAccounts: initialAccoun
     }));
   };
 
-  const handleSubmitAccount = () => {
-    // In a real app, this would call the API to create a service account
-    const newAccount = {
-      account_id: Date.now().toString(), // Mock ID generation
-      ...serviceAccountFormData,
-      status: 'active',
-      created_at: new Date().toISOString()
-    };
-    setServiceAccounts(prev => [...prev, newAccount]);
-    handleCloseAccountDialog();
+  const handleSubmitAccount = async () => {
+    try {
+      const { createServiceAccount } = await import('../services/serviceAccountService');
+      const newAccount = await createServiceAccount(serviceAccountFormData);
+      setServiceAccounts(prev => [...prev, newAccount]);
+      handleCloseAccountDialog();
+    } catch (err) {
+      console.error('Failed to create service account:', err);
+      setError(err.message || 'Failed to create service account. Please try again.');
+    }
+  };
+
+  // Agent commands
+  const handleSendCommand = async (agent, commandType) => {
+    try {
+      const commandData = {
+        command_type: commandType,
+        parameters: {}
+      };
+      
+      // Add additional parameters for specific commands
+      if (commandType === 'start') {
+        commandData.parameters.force = false;
+      } else if (commandType === 'stop') {
+        commandData.parameters.graceful = true;
+      }
+      
+      const updatedAgent = await sendAgentCommand(agent.agent_id, commandData);
+      
+      // Update agent in state
+      setAgents(prevAgents => 
+        prevAgents.map(a => 
+          a.agent_id === agent.agent_id ? updatedAgent : a
+        )
+      );
+      
+    } catch (err) {
+      console.error(`Failed to send ${commandType} command:`, err);
+      setError(err.message || `Failed to send ${commandType} command. Please try again.`);
+    }
   };
 
   // Auto-login handlers
@@ -210,44 +289,57 @@ function AgentManagement({ agents: initialAgents, serviceAccounts: initialAccoun
     }));
   };
 
-  const handleSubmitAutoLogin = () => {
-    // In a real app, this would call the API to enable auto-login
-    setAgents(prevAgents => 
-      prevAgents.map(agent => 
-        agent.agent_id === autoLoginData.agent_id 
-          ? { 
-              ...agent, 
-              auto_login_enabled: true,
-              service_account: serviceAccounts.find(acc => acc.account_id === autoLoginData.service_account_id)
-            } 
-          : agent
-      )
-    );
-    handleCloseAutoLoginDialog();
+  const handleSubmitAutoLogin = async () => {
+    try {
+      const updatedAgent = await enableAgentAutoLogin(
+        autoLoginData.agent_id,
+        autoLoginData.service_account_id,
+        autoLoginData.session_type
+      );
+      
+      // Update agent in state
+      setAgents(prevAgents => 
+        prevAgents.map(agent => 
+          agent.agent_id === autoLoginData.agent_id ? updatedAgent : agent
+        )
+      );
+      
+      handleCloseAutoLoginDialog();
+    } catch (err) {
+      console.error('Failed to enable auto-login:', err);
+      setError(err.message || 'Failed to enable auto-login. Please try again.');
+    }
   };
 
-  const handleDisableAutoLogin = (agent) => {
-    // In a real app, this would call the API to disable auto-login
-    setAgents(prevAgents => 
-      prevAgents.map(a => 
-        a.agent_id === agent.agent_id 
-          ? { ...a, auto_login_enabled: false, service_account: null } 
-          : a
-      )
-    );
+  const handleDisableAutoLogin = async (agent) => {
+    try {
+      const updatedAgent = await disableAgentAutoLogin(agent.agent_id);
+      
+      // Update agent in state
+      setAgents(prevAgents => 
+        prevAgents.map(a => 
+          a.agent_id === agent.agent_id ? updatedAgent : a
+        )
+      );
+    } catch (err) {
+      console.error('Failed to disable auto-login:', err);
+      setError(err.message || 'Failed to disable auto-login. Please try again.');
+    }
   };
 
   // Filter agents based on search term
   const filteredAgents = agents.filter(agent => 
-    agent.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    agent.machine_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    !searchTerm || 
+    agent.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    agent.machine_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (agent.ip_address && agent.ip_address.includes(searchTerm))
   );
 
   // Filter service accounts based on search term
   const filteredAccounts = serviceAccounts.filter(account => 
-    account.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    account.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    !searchTerm ||
+    account.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    account.display_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (account.description && account.description.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
@@ -258,15 +350,15 @@ function AgentManagement({ agents: initialAgents, serviceAccounts: initialAccoun
     switch (status) {
       case 'online':
         color = 'bg-green-100 text-green-800 border-green-300';
-        icon = <CheckCircle size={14} className="text-green-500 mr-1" />;
+        icon = <CheckCircle size={14} className="text-green-500" />;
         break;
       case 'offline':
         color = 'bg-red-100 text-red-800 border-red-300';
-        icon = <X size={14} className="text-red-500 mr-1" />;
+        icon = <X size={14} className="text-red-500" />;
         break;
       case 'busy':
         color = 'bg-yellow-100 text-yellow-800 border-yellow-300';
-        icon = <AlertTriangle size={14} className="text-yellow-500 mr-1" />;
+        icon = <AlertTriangle size={14} className="text-yellow-500" />;
         break;
       default:
         color = 'bg-gray-100 text-gray-800 border-gray-300';
@@ -275,7 +367,7 @@ function AgentManagement({ agents: initialAgents, serviceAccounts: initialAccoun
     
     return (
       <span className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full border ${color}`}>
-        {icon}
+        {icon && <span className="mr-1">{icon}</span>}
         {status}
       </span>
     );
@@ -348,14 +440,17 @@ function AgentManagement({ agents: initialAgents, serviceAccounts: initialAccoun
             />
           </div>
 
+          {/* Error message */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-800 rounded-md p-4 mb-6">
+              {error}
+            </div>
+          )}
+
           {/* Loading, Error, and Empty States */}
           {loading ? (
             <div className="flex justify-center my-12">
               <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-            </div>
-          ) : error ? (
-            <div className="bg-red-50 border border-red-200 text-red-800 rounded-md p-4 mb-6">
-              {error}
             </div>
           ) : filteredAgents.length === 0 ? (
             <div className="bg-white rounded-lg shadow p-6 text-center">
@@ -424,15 +519,17 @@ function AgentManagement({ agents: initialAgents, serviceAccounts: initialAccoun
                           >
                             <Edit size={18} />
                           </button>
-                          {agent.status === 'online' ? (
+                          {agent.status === 'online' || agent.status === 'busy' ? (
                             <button
+                              onClick={() => handleSendCommand(agent, 'stop')}
                               className="text-yellow-600 hover:text-yellow-900 mr-3"
-                              title="Send Pause Command"
+                              title="Send Stop Command"
                             >
                               <Pause size={18} />
                             </button>
                           ) : (
                             <button
+                              onClick={() => handleSendCommand(agent, 'start')}
                               className="text-green-600 hover:text-green-900 mr-3"
                               title="Send Start Command"
                             >
@@ -649,7 +746,7 @@ function AgentManagement({ agents: initialAgents, serviceAccounts: initialAccoun
                   <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                     <div className="sm:flex sm:items-start">
                       <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
-                        <Trash2 size={24} className="text-red-600" />
+                        <Trash2 className="h-6 w-6 text-red-600" />
                       </div>
                       <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
                         <h3 className="text-lg leading-6 font-medium text-gray-900">
@@ -741,7 +838,7 @@ function AgentManagement({ agents: initialAgents, serviceAccounts: initialAccoun
                       <div className="bg-yellow-50 p-4 rounded-md">
                         <div className="flex">
                           <div className="flex-shrink-0">
-                            <AlertTriangle size={20} className="text-yellow-400" />
+                            <AlertTriangle className="h-5 w-5 text-yellow-400" />
                           </div>
                           <div className="ml-3">
                             <h3 className="text-sm font-medium text-yellow-800">Important Note</h3>
@@ -817,14 +914,17 @@ function AgentManagement({ agents: initialAgents, serviceAccounts: initialAccoun
             />
           </div>
 
+          {/* Error message */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-800 rounded-md p-4 mb-6">
+              {error}
+            </div>
+          )}
+
           {/* Loading, Error, and Empty States */}
           {loading ? (
             <div className="flex justify-center my-12">
               <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-            </div>
-          ) : error ? (
-            <div className="bg-red-50 border border-red-200 text-red-800 rounded-md p-4 mb-6">
-              {error}
             </div>
           ) : filteredAccounts.length === 0 ? (
             <div className="bg-white rounded-lg shadow p-6 text-center">
@@ -865,10 +965,7 @@ function AgentManagement({ agents: initialAgents, serviceAccounts: initialAccoun
                             ? 'bg-green-100 text-green-800 border-green-300' 
                             : 'bg-red-100 text-red-800 border-red-300'
                         }`}>
-                          {account.status === 'active' ? 
-                            <><CheckCircle size={14} className="text-green-500 mr-1" />{account.status}</> : 
-                            <><X size={14} className="text-red-500 mr-1" />{account.status}</>
-                          }
+                          {account.status}
                         </span>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">

@@ -1,3 +1,13 @@
+/**
+ * Agent service for interacting with the agent management API.
+ * 
+ * This service provides functions to manage agents:
+ * - List, create, update, delete agents
+ * - Get agent logs
+ * - Send commands to agents
+ * - Configure auto-login
+ */
+
 import axios from 'axios';
 
 // Get API URL from environment variable, with fallback
@@ -99,10 +109,45 @@ apiClient.interceptors.response.use(
   }
 );
 
-// Get all agents
-export const getAgents = async () => {
+/**
+ * Get all agents with optional filtering.
+ * 
+ * @param {Object} filters - Optional filter parameters
+ * @param {string} filters.status - Filter by agent status
+ * @param {string} filters.search - Search term
+ * @param {Array<string>} filters.tags - Filter by tags
+ * @param {number} filters.skip - Number of records to skip (pagination)
+ * @param {number} filters.limit - Maximum records to return (pagination)
+ * @returns {Promise<Array>} List of agents
+ */
+export const getAgents = async (filters = {}) => {
   try {
-    const response = await apiClient.get('/api/v1/agents');
+    // Build query parameters
+    const params = new URLSearchParams();
+    
+    if (filters.status) {
+      params.append('status', filters.status);
+    }
+    
+    if (filters.search) {
+      params.append('search', filters.search);
+    }
+    
+    if (filters.tags && filters.tags.length > 0) {
+      filters.tags.forEach(tag => {
+        params.append('tags', tag);
+      });
+    }
+    
+    if (filters.skip !== undefined) {
+      params.append('skip', filters.skip);
+    }
+    
+    if (filters.limit !== undefined) {
+      params.append('limit', filters.limit);
+    }
+    
+    const response = await apiClient.get('/api/v1/agents', { params });
     return response.data;
   } catch (error) {
     throw new Error(
@@ -111,7 +156,12 @@ export const getAgents = async () => {
   }
 };
 
-// Get a single agent by ID
+/**
+ * Get a single agent by ID.
+ * 
+ * @param {string} agentId - Agent ID
+ * @returns {Promise<Object>} Agent data
+ */
 export const getAgentById = async (agentId) => {
   try {
     const response = await apiClient.get(`/api/v1/agents/${agentId}`);
@@ -123,7 +173,12 @@ export const getAgentById = async (agentId) => {
   }
 };
 
-// Create a new agent
+/**
+ * Create a new agent.
+ * 
+ * @param {Object} agentData - Agent data
+ * @returns {Promise<Object>} Created agent
+ */
 export const createAgent = async (agentData) => {
   try {
     const response = await apiClient.post('/api/v1/agents', agentData);
@@ -135,7 +190,13 @@ export const createAgent = async (agentData) => {
   }
 };
 
-// Update an existing agent
+/**
+ * Update an existing agent.
+ * 
+ * @param {string} agentId - Agent ID
+ * @param {Object} agentData - Agent update data
+ * @returns {Promise<Object>} Updated agent
+ */
 export const updateAgent = async (agentId, agentData) => {
   try {
     const response = await apiClient.put(`/api/v1/agents/${agentId}`, agentData);
@@ -147,7 +208,12 @@ export const updateAgent = async (agentId, agentData) => {
   }
 };
 
-// Delete an agent
+/**
+ * Delete an agent.
+ * 
+ * @param {string} agentId - Agent ID
+ * @returns {Promise<boolean>} True if deletion successful
+ */
 export const deleteAgent = async (agentId) => {
   try {
     await apiClient.delete(`/api/v1/agents/${agentId}`);
@@ -159,7 +225,51 @@ export const deleteAgent = async (agentId) => {
   }
 };
 
-// Send a command to an agent
+/**
+ * Get agent logs.
+ * 
+ * @param {string} agentId - Agent ID
+ * @param {Object} options - Optional parameters
+ * @param {string} options.logLevel - Filter by log level
+ * @param {number} options.skip - Number of records to skip (pagination)
+ * @param {number} options.limit - Maximum records to return (pagination)
+ * @returns {Promise<Array>} List of agent logs
+ */
+export const getAgentLogs = async (agentId, options = {}) => {
+  try {
+    // Build query parameters
+    const params = new URLSearchParams();
+    
+    if (options.logLevel) {
+      params.append('log_level', options.logLevel);
+    }
+    
+    if (options.skip !== undefined) {
+      params.append('skip', options.skip);
+    }
+    
+    if (options.limit !== undefined) {
+      params.append('limit', options.limit);
+    }
+    
+    const response = await apiClient.get(`/api/v1/agents/${agentId}/logs`, { params });
+    return response.data;
+  } catch (error) {
+    throw new Error(
+      error.response?.data?.detail || 'Failed to fetch agent logs'
+    );
+  }
+};
+
+/**
+ * Send a command to an agent.
+ * 
+ * @param {string} agentId - Agent ID
+ * @param {Object} commandData - Command data
+ * @param {string} commandData.command_type - Command type
+ * @param {Object} commandData.parameters - Command parameters
+ * @returns {Promise<Object>} Updated agent
+ */
 export const sendAgentCommand = async (agentId, commandData) => {
   try {
     const response = await apiClient.post(`/api/v1/agents/${agentId}/command`, commandData);
@@ -171,7 +281,14 @@ export const sendAgentCommand = async (agentId, commandData) => {
   }
 };
 
-// Enable auto-login for an agent
+/**
+ * Enable auto-login for an agent.
+ * 
+ * @param {string} agentId - Agent ID
+ * @param {string} serviceAccountId - Service account ID to use for auto-login
+ * @param {string} sessionType - Session type (windows, web, etc.)
+ * @returns {Promise<Object>} Updated agent
+ */
 export const enableAgentAutoLogin = async (agentId, serviceAccountId, sessionType = 'windows') => {
   try {
     const url = `/api/v1/agents/${agentId}/auto-login/enable?service_account_id=${serviceAccountId}&session_type=${sessionType}`;
@@ -184,7 +301,12 @@ export const enableAgentAutoLogin = async (agentId, serviceAccountId, sessionTyp
   }
 };
 
-// Disable auto-login for an agent
+/**
+ * Disable auto-login for an agent.
+ * 
+ * @param {string} agentId - Agent ID
+ * @returns {Promise<Object>} Updated agent
+ */
 export const disableAgentAutoLogin = async (agentId) => {
   try {
     const response = await apiClient.post(`/api/v1/agents/${agentId}/auto-login/disable`);
@@ -192,6 +314,23 @@ export const disableAgentAutoLogin = async (agentId) => {
   } catch (error) {
     throw new Error(
       error.response?.data?.detail || 'Failed to disable agent auto-login'
+    );
+  }
+};
+
+/**
+ * Check for stale agents and mark them as offline.
+ * 
+ * @param {number} maxSilenceMinutes - Maximum silence time in minutes
+ * @returns {Promise<Object>} Result
+ */
+export const checkStaleAgents = async (maxSilenceMinutes = 5) => {
+  try {
+    const response = await apiClient.post(`/api/v1/agents/check-stale?max_silence_minutes=${maxSilenceMinutes}`);
+    return response.data;
+  } catch (error) {
+    throw new Error(
+      error.response?.data?.detail || 'Failed to check stale agents'
     );
   }
 };

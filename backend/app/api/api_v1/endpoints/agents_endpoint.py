@@ -1,30 +1,36 @@
 """
-Agent management endpoints for the orchestrator API.
+API endpoints for agent management.
 
-This module provides endpoints for managing automation agents.
+This module provides API endpoints for managing agents:
+- List, create, update, delete agents
+- Agent logs
+- Agent commands
+- Auto-login configuration
+- Agent registration and heartbeat
 """
 
 import logging
 from typing import Any, List, Optional
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
-from ....auth.jwt import get_current_active_user
-from ....auth.permissions import PermissionChecker
-from ....db.session import get_db
-from ....models import User, Agent, AgentLog
-from ....schemas.agent import (
+from app.auth.jwt import get_current_active_user, get_current_agent
+from app.auth.permissions import PermissionChecker
+from app.db.session import get_db
+from app.models import User, Agent, AgentLog
+from app.schemas.agent import (
     AgentCreate, 
     AgentUpdate, 
     AgentResponse, 
     AgentLogResponse,
-    AgentCommandRequest
+    AgentCommandRequest,
+    AgentHeartbeatRequest
 )
-from ....services.agent_service import AgentService
-from ....services.agent_manager import AgentManager
-from ..dependencies import get_agent_from_path
+from app.services.agent_manager import AgentManager
+from app.messaging.producer import get_message_producer
+from app.api.api_v1.dependencies import get_agent_from_path
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -42,14 +48,17 @@ def list_agents(
     _: bool = Depends(require_agent_read),
     skip: int = 0,
     limit: int = 100,
+    tenant_id: Optional[str] = None,
     status: Optional[str] = None,
-    search: Optional[str] = None
+    search: Optional[str] = None,
+    tags: Optional[List[str]] = Query(None)
 ) -> Any:
     """
     List all agents with optional filtering.
     """
-    # Create agent service
-    agent_service = AgentService(db)
+    # Create agent manager
+    message_producer = get_message_producer()
+    agent_manager = AgentManager(db, message_producer)
     
     # Determine tenant filter
     if tenant_id:
@@ -67,21 +76,11 @@ def list_agents(
         tenant_id = str(current_user.tenant_id)
         
     # List agents
-    result = agent_service.list_agents(
+    result = agent_manager.get_agents(
         tenant_id=tenant_id,
         status=status,
         search=search,
-        skip=skip,
-        limit=limit
-    )
-    
-    agent_manager = AgentManager(db)
-    
-    # List agents
-    result = agent_manager.get_agents(
-        tenant_id=str(current_user.tenant_id),
-        status=status,
-        search=search,
+        tags=tags,
         skip=skip,
         limit=limit
     )
@@ -98,17 +97,27 @@ def create_agent(
     """
     Create a new agent.
     """
-    # Create agent service
-    agent_service = AgentService(db)
+    # Create agent manager
+    message_producer = get_message_producer()
+    agent_manager = AgentManager(db, message_producer)
     
     # Create agent
-    agent = agent_service.create_agent(
-        agent_in=agent_in,
-        tenant_id=str(current_user.tenant_id),
-        user_id=str(current_user.user_id)
-    )
-    
-    return agent
+    try:
+        agent = agent_manager.create_agent(
+            agent_data=agent_in,
+            tenant_id=str(current_user.tenant_id),
+            user_id=str(current_user.user_id)
+        )
+        return agent
+    except HTTPException as e:
+        # Re-raise HTTP exceptions
+        raise e
+    except Exception as e:
+        logger.error(f"Failed to create agent: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create agent: {str(e)}"
+        )
 
 @router.get("/{agent_id}", response_model=AgentResponse)
 def get_agent(
@@ -131,41 +140,65 @@ def update_agent(
     """
     Update an agent.
     """
-    # Create agent service
-    agent_service = AgentService(db)
+    # Create agent manager
+    message_producer = get_message_producer()
+    agent_manager = AgentManager(db, message_producer)
     
     # Update agent
-    updated_agent = agent_service.update_agent(
-        agent_id=str(agent.agent_id),
-        agent_in=agent_in,
-        tenant_id=str(agent.tenant_id),
-        user_id=str(current_user.user_id)
-    )
-    
-    return updated_agent
+    try:
+        updated_agent = agent_manager.update_agent(
+            agent_id=str(agent.agent_id),
+            agent_data=agent_in,
+            tenant_id=str(agent.tenant_id),
+            user_id=str(current_user.user_id)
+        )
+        return updated_agent
+    except HTTPException as e:
+        # Re-raise HTTP exceptions
+        raise e
+    except Exception as e:
+        logger.error(f"Failed to update agent: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update agent: {str(e)}"
+        )
 
 @router.delete("/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_agent(
     agent: Agent = Depends(get_agent_from_path),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
     _: bool = Depends(require_agent_delete)
 ) -> None:
     """
     Delete an agent.
     """
-    # Create agent service
-    agent_service = AgentService(db)
+    # Create agent manager
+    message_producer = get_message_producer()
+    agent_manager = AgentManager(db, message_producer)
     
     # Delete agent
-    agent_service.delete_agent(
-        agent_id=str(agent.agent_id),
-        tenant_id=str(agent.tenant_id)
-    )
+    try:
+        agent_manager.delete_agent(
+            agent_id=str(agent.agent_id),
+            tenant_id=str(agent.tenant_id),
+            user_id=str(current_user.user_id)
+        )
+    except HTTPException as e:
+        # Re-raise HTTP exceptions
+        raise e
+    except Exception as e:
+        logger.error(f"Failed to delete agent: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete agent: {str(e)}"
+        )
 
 @router.get("/{agent_id}/logs", response_model=List[AgentLogResponse])
 def get_agent_logs(
     agent: Agent = Depends(get_agent_from_path),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
     _: bool = Depends(require_agent_read),
     skip: int = 0,
     limit: int = 100,
@@ -174,19 +207,26 @@ def get_agent_logs(
     """
     Get agent logs.
     """
-    # Create agent service
-    agent_service = AgentService(db)
+    # Create agent manager
+    message_producer = get_message_producer()
+    agent_manager = AgentManager(db, message_producer)
     
-    # Get agent logs
-    logs = agent_service.get_agent_logs(
-        agent_id=str(agent.agent_id),
-        tenant_id=str(agent.tenant_id),
-        log_level=log_level,
-        skip=skip,
-        limit=limit
-    )
-    
-    return logs
+    # Get logs
+    try:
+        logs = agent_manager.get_agent_logs(
+            agent_id=str(agent.agent_id),
+            tenant_id=str(agent.tenant_id),
+            log_level=log_level,
+            skip=skip,
+            limit=limit
+        )
+        return logs
+    except Exception as e:
+        logger.error(f"Failed to get agent logs: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get agent logs: {str(e)}"
+        )
 
 @router.post("/{agent_id}/command", response_model=AgentResponse)
 def send_agent_command(
@@ -194,24 +234,42 @@ def send_agent_command(
     agent: Agent = Depends(get_agent_from_path),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
-    _: bool = Depends(require_agent_update)
+    _: bool = Depends(require_agent_update),
+    background_tasks: BackgroundTasks = None
 ) -> Any:
     """
     Send a command to an agent.
     """
-    # Create agent service
-    agent_service = AgentService(db)
+    # Create agent manager
+    message_producer = get_message_producer()
+    agent_manager = AgentManager(db, message_producer)
     
     # Send command
-    result = agent_service.send_agent_command(
-        agent_id=str(agent.agent_id),
-        tenant_id=str(agent.tenant_id),
-        command_type=command.command_type,
-        command_parameters=command.parameters,
-        user_id=str(current_user.user_id)
-    )
-    
-    return result
+    try:
+        success = agent_manager.send_command(
+            agent_id=str(agent.agent_id),
+            tenant_id=str(agent.tenant_id),
+            command=command,
+            user_id=str(current_user.user_id)
+        )
+        
+        if success:
+            # Return agent
+            return agent
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to send command to agent"
+            )
+    except HTTPException as e:
+        # Re-raise HTTP exceptions
+        raise e
+    except Exception as e:
+        logger.error(f"Failed to send command to agent: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to send command to agent: {str(e)}"
+        )
 
 @router.post("/{agent_id}/auto-login/enable", response_model=AgentResponse)
 def enable_agent_auto_login(
@@ -225,25 +283,29 @@ def enable_agent_auto_login(
     """
     Enable auto-login for an agent with a specific service account.
     """
-    # Create agent service
-    agent_service = AgentService(db)
+    # Create agent manager
+    message_producer = get_message_producer()
+    agent_manager = AgentManager(db, message_producer)
     
     # Enable auto-login
-    agent_update = AgentUpdate(
-        service_account_id=service_account_id,
-        auto_login_enabled=True,
-        session_type=session_type
-    )
-    
-    # Update agent
-    updated_agent = agent_service.update_agent(
-        agent_id=str(agent.agent_id),
-        agent_in=agent_update,
-        tenant_id=str(agent.tenant_id),
-        user_id=str(current_user.user_id)
-    )
-    
-    return updated_agent
+    try:
+        updated_agent = agent_manager.configure_auto_login(
+            agent_id=str(agent.agent_id),
+            tenant_id=str(agent.tenant_id),
+            service_account_id=service_account_id,
+            session_type=session_type,
+            user_id=str(current_user.user_id)
+        )
+        return updated_agent
+    except HTTPException as e:
+        # Re-raise HTTP exceptions
+        raise e
+    except Exception as e:
+        logger.error(f"Failed to enable auto-login: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to enable auto-login: {str(e)}"
+        )
 
 @router.post("/{agent_id}/auto-login/disable", response_model=AgentResponse)
 def disable_agent_auto_login(
@@ -255,23 +317,27 @@ def disable_agent_auto_login(
     """
     Disable auto-login for an agent.
     """
-    # Create agent service
-    agent_service = AgentService(db)
+    # Create agent manager
+    message_producer = get_message_producer()
+    agent_manager = AgentManager(db, message_producer)
     
     # Disable auto-login
-    agent_update = AgentUpdate(
-        auto_login_enabled=False
-    )
-    
-    # Update agent
-    updated_agent = agent_service.update_agent(
-        agent_id=str(agent.agent_id),
-        agent_in=agent_update,
-        tenant_id=str(agent.tenant_id),
-        user_id=str(current_user.user_id)
-    )
-    
-    return updated_agent
+    try:
+        updated_agent = agent_manager.disable_auto_login(
+            agent_id=str(agent.agent_id),
+            tenant_id=str(agent.tenant_id),
+            user_id=str(current_user.user_id)
+        )
+        return updated_agent
+    except HTTPException as e:
+        # Re-raise HTTP exceptions
+        raise e
+    except Exception as e:
+        logger.error(f"Failed to disable auto-login: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to disable auto-login: {str(e)}"
+        )
 
 @router.post("/register", response_model=AgentResponse)
 def register_agent(
@@ -282,8 +348,9 @@ def register_agent(
     Register a new agent. This endpoint is used by agents to register themselves.
     No authentication is required, but the machine_id is used for verification.
     """
-    # Create agent service
-    agent_service = AgentService(db)
+    # Create agent manager
+    message_producer = get_message_producer()
+    agent_manager = AgentManager(db, message_producer)
     
     # Check if machine_id is provided
     if not agent_in.machine_id:
@@ -300,56 +367,90 @@ def register_agent(
         )
         
     # Register agent
-    agent = agent_service.register_agent(
-        agent_in=agent_in,
-        tenant_id=agent_in.tenant_id
-    )
-    
-    return agent
+    try:
+        agent = agent_manager.register_agent(
+            registration_data=agent_in,
+            tenant_id=agent_in.tenant_id
+        )
+        return agent
+    except Exception as e:
+        logger.error(f"Agent registration failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Agent registration failed: {str(e)}"
+        )
 
-@router.post("/{agent_id}/heartbeat", response_model=dict)
+@router.post("/{agent_id}/heartbeat")
 def agent_heartbeat(
     agent_id: str,
-    heartbeat_data: dict,
-    db: Session = Depends(get_db)
+    heartbeat_data: AgentHeartbeatRequest,
+    db: Session = Depends(get_db),
+    current_agent: Agent = Depends(get_current_agent)
 ) -> Any:
     """
     Update agent heartbeat. This endpoint is used by agents to send heartbeat signals.
     """
-    # Extract tenant_id from headers if possible
-    tenant_id = heartbeat_data.get("tenant_id")
+    # Check if agent ID matches
+    if str(current_agent.agent_id) != agent_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Agent ID mismatch"
+        )
     
-    # If not in data, try to get from agent record
-    if not tenant_id:
-        # Find agent without tenant filter first
-        # This query is less restrictive - find by agent_id only
-        agent_query = db.query(Agent).filter(Agent.agent_id == agent_id)
-        agent = agent_query.first()
-        
-        if not agent:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, 
-                detail="Agent not found"
-            )
-            
-        tenant_id = str(agent.tenant_id)
+    # Create agent manager
+    message_producer = get_message_producer()
+    agent_manager = AgentManager(db, message_producer)
     
-    # Create agent service
-    agent_service = AgentService(db)
-    
-    # Update heartbeat - using the extracted tenant_id
+    # Update heartbeat
     try:
-        agent_service.update_agent_status(
+        agent_manager.update_heartbeat(
             agent_id=agent_id,
-            tenant_id=tenant_id,
-            status="online"
+            tenant_id=str(current_agent.tenant_id),
+            heartbeat=heartbeat_data
         )
         
-        # Return empty response
-        return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+        # Return success response with timestamp
+        return {
+            "status": "ok", 
+            "timestamp": datetime.now().isoformat(),
+            "agent_id": agent_id
+        }
     except Exception as e:
-        logging.error(f"Error updating agent status: {e}")
+        logger.error(f"Error updating agent heartbeat: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error updating agent status: {str(e)}"
+            detail=f"Error updating agent heartbeat: {str(e)}"
         )
+
+@router.post("/check-stale", response_model=dict)
+def check_stale_agents(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+    _: bool = Depends(require_agent_read),
+    max_silence_minutes: int = Query(5, description="Maximum silence time in minutes")
+) -> Any:
+    """
+    Check for stale agents and mark them as offline.
+    This endpoint is intended for scheduled calls.
+    """
+    # Create agent manager
+    message_producer = get_message_producer()
+    agent_manager = AgentManager(db, message_producer)
+    
+    # Run check in background task
+    def bg_check_stale_agents():
+        try:
+            count = agent_manager.check_stale_agents(max_silence_minutes)
+            logger.info(f"Marked {count} stale agents as offline")
+        except Exception as e:
+            logger.error(f"Error checking stale agents: {str(e)}")
+    
+    # Add task to background tasks
+    background_tasks.add_task(bg_check_stale_agents)
+    
+    # Return immediate response
+    return {
+        "status": "started",
+        "message": "Checking stale agents in background"
+    }

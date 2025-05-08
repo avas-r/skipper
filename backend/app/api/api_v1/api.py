@@ -19,8 +19,6 @@ from .endpoints import (
     service_account_endpoint,
     subscriptions_endpoint,
     tenants_endpoint,
-    analytics,
-    agent_packages,
     users_endpoint
 )
 
@@ -39,7 +37,5 @@ api_router.include_router(schedules_endpoint.router, prefix="/schedules", tags=[
 api_router.include_router(jobs_endpoint.router, prefix="/jobs", tags=["Jobs"])
 api_router.include_router(executions_endpoint.router, prefix="/job-executions", tags=["Job Executions"])
 api_router.include_router(notifications_endpoint.router, prefix="/notifications", tags=["Notifications"])
-api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
 api_router.include_router(subscriptions_endpoint.router, prefix="/subscriptions", tags=["Subscriptions"])
 api_router.include_router(service_account_endpoint.router, prefix="/service-accounts", tags=["Service Accounts"])
-api_router.include_router(agent_packages.router, prefix="/agent-packages", tags=["Agent Packages"])
