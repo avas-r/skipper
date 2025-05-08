@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { 
   AppBar, Box, Toolbar, Typography, Drawer, List, ListItem, 
-  ListItemIcon, ListItemText, Divider, IconButton
+  ListItemIcon, ListItemText, Divider, IconButton, Avatar, Chip
 } from '@mui/material';
 import MenuIcon      from '@mui/icons-material/Menu';
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -13,12 +13,25 @@ import ScheduleIcon  from '@mui/icons-material/Schedule';
 import QueueIcon     from '@mui/icons-material/Queue';
 import PaymentIcon   from '@mui/icons-material/Payment';
 import LogoutIcon    from '@mui/icons-material/Logout';
+import PersonIcon    from '@mui/icons-material/Person';
+import { logout, getCurrentUser, getUserTenant } from '../../services/authService';
 
 const drawerWidth = 240;
 
 export default function Dashboard() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [user, setUser] = useState(null);
+  const [tenant, setTenant] = useState(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    // Get current user and tenant info
+    const currentUser = getCurrentUser();
+    const currentTenant = getUserTenant();
+    
+    setUser(currentUser);
+    setTenant(currentTenant);
+  }, []);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -30,7 +43,8 @@ export default function Dashboard() {
   };
 
   const handleLogout = () => {
-    // Handle logout logic here
+    // Use auth service to handle logout
+    logout();
     navigate('/login');
   };
 
@@ -101,9 +115,34 @@ export default function Dashboard() {
           >
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" noWrap component="div">
+          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             Skipper Automation Platform
           </Typography>
+          
+          {user && (
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <Box sx={{ mr: 2, textAlign: 'right' }}>
+                <Typography variant="body2" color="white">
+                  {user.full_name || user.email}
+                </Typography>
+                {tenant && (
+                  <Typography variant="caption" color="rgba(255,255,255,0.7)">
+                    Tenant: {tenant}
+                  </Typography>
+                )}
+              </Box>
+              <Chip
+                icon={<PersonIcon />}
+                label={user.roles ? user.roles[0] : 'User'} 
+                variant="outlined"
+                size="small"
+                sx={{ 
+                  color: 'white', 
+                  borderColor: 'rgba(255,255,255,0.5)',
+                }}
+              />
+            </Box>
+          )}
         </Toolbar>
       </AppBar>
       <Box

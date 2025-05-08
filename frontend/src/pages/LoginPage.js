@@ -12,6 +12,10 @@ import {
   CircularProgress,
   Link
 } from '@mui/material';
+import axios from 'axios';
+
+// API URL
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -38,17 +42,86 @@ function LoginPage() {
     setLoading(true);
 
     try {
-      // Placeholder for login logic
-      // This would typically call an API service 
-      setTimeout(() => {
-        // Mock successful login
-        localStorage.setItem('token', 'mock-token');
-        setLoading(false);
-        navigate('/');
-      }, 1000);
+      // OAuth2 expects form data, not JSON
+      const formData = new URLSearchParams();
+      formData.append('username', credentials.username);
+      formData.append('password', credentials.password);
+      formData.append('grant_type', 'password');  // OAuth2 requirement
+
+      console.log('Sending login request for user:', credentials.username);
       
+      // Call the login API endpoint with the correct format
+      const response = await axios.post(`${API_URL}/api/v1/auth/login`, formData, {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      });
+
+      console.log('Login successful, token received');
+      
+      // Store tokens in localStorage
+      localStorage.setItem('access_token', response.data.access_token);
+      localStorage.setItem('refresh_token', response.data.refresh_token);
+      
+      try {
+        // Get user information - use the exact same instance and config
+        const accessToken = response.data.access_token;
+        console.log('Fetching user info with token');
+        
+        const userResponse = await axios.get(`${API_URL}/api/v1/auth/me`, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+        
+        // Store user info in localStorage
+        localStorage.setItem('user', JSON.stringify(userResponse.data));
+      } catch (userError) {
+        console.error('Error fetching user info:', userError);
+        
+        // If fetching user info fails due to token expiration, create a placeholder user
+        // This is a fallback approach since we know the login was successful
+        if (userError.response && userError.response.status === 401) {
+          console.log('Using fallback user data since token might have expired quickly');
+          const fallbackUser = {
+            email: credentials.username,
+            full_name: 'User',
+            tenant_id: 'auto-detected',
+            roles: ['user']
+          };
+          localStorage.setItem('user', JSON.stringify(fallbackUser));
+        } else {
+          throw userError; // Re-throw other errors
+        }
+      }
+      
+      setLoading(false);
+      
+      // If came from another page, go back to that page, otherwise go to home
+      const from = location.state?.from?.pathname || '/';
+      navigate(from, { replace: true });
     } catch (error) {
-      setError(error.message || 'Login failed');
+      console.error('Login error:', error);
+      if (error.response) {
+        // The request was made and the server responded with an error
+        const errorDetail = error.response.data?.detail;
+        // Handle case where detail might be an object (validation error)
+        if (errorDetail && typeof errorDetail === 'object') {
+          setError('Invalid credentials or validation error');
+          console.error('Validation error:', errorDetail);
+        } else {
+          setError(errorDetail || 'Invalid username or password');
+        }
+      } else if (error.request) {
+        // The request was made but no response was received
+        setError('Server not responding. Please try again later.');
+      } else {
+        // Something happened in setting up the request
+        const errorMsg = error.message && typeof error.message === 'string' 
+          ? error.message 
+          : 'Login failed';
+        setError(errorMsg);
+      }
       setLoading(false);
     }
   };

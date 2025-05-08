@@ -89,10 +89,17 @@ const SubscriptionTiers = () => {
       });
       
     } catch (err) {
-      setError(
-        err.response?.data?.detail || 
-        'Failed to upgrade subscription. Please try again.'
-      );
+      const errorDetail = err.response?.data?.detail;
+      // Handle case where detail might be an object (validation error)
+      if (errorDetail && typeof errorDetail === 'object') {
+        console.error('Validation error:', errorDetail);
+        setError('Failed to upgrade subscription: validation error');
+      } else {
+        setError(
+          errorDetail || 
+          'Failed to upgrade subscription. Please try again.'
+        );
+      }
     } finally {
       setUpgradeLoading(false);
     }

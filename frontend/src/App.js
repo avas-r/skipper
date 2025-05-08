@@ -5,6 +5,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 
 // Layout components
 import Dashboard from './components/layout/Dashboard';
+import ProtectedRoute from './components/auth/ProtectedRoute';
 
 // Pages
 import HomePage from './pages/HomePage';
@@ -39,7 +40,14 @@ function App() {
         <Route path="/register" element={<RegisterPage />} />
         
         {/* Protected routes */}
-        <Route path="/" element={<Dashboard />}>
+        <Route 
+          path="/" 
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        >
           <Route index element={<HomePage />} />
           <Route path="agents" element={<AgentsPage />} />
           <Route path="jobs" element={<JobsPage />} />

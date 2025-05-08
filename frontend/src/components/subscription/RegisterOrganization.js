@@ -215,10 +215,17 @@ const RegisterOrganization = () => {
         console.error('Error response status:', err.response.status);
         console.error('Error response headers:', err.response.headers);
         
-        setError(
-          err.response.data?.detail || 
-          `Registration failed with status ${err.response.status}. Please try again.`
-        );
+        const errorDetail = err.response.data?.detail;
+        // Handle case where detail might be an object (validation error)
+        if (errorDetail && typeof errorDetail === 'object') {
+          console.error('Validation error:', errorDetail);
+          setError('Registration failed: validation error');
+        } else {
+          setError(
+            errorDetail || 
+            `Registration failed with status ${err.response.status}. Please try again.`
+          );
+        }
       } else if (err.request) {
         // The request was made but no response was received
         console.error('No response received:', err.request);
