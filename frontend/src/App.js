@@ -1,8 +1,10 @@
+// frontend/src/App.js
 import React from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider } from './context/AuthContext';
+
 // Layout components
 import Dashboard from './components/layout/Dashboard';
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -16,8 +18,8 @@ import SchedulesPage from './pages/SchedulesPage';
 import QueuesPage from './pages/QueuesPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
-import SubscriptionPage from './pages/SubscriptionPage';
-import SubscriptionTiersPage from './pages/SubscriptionTiersPage';
+import UnauthorizedPage from './pages/UnauthorizedPage';
+import NotFoundPage from './pages/NotFoundPage';
 
 // Create a theme
 const theme = createTheme({
@@ -37,8 +39,10 @@ function App() {
       <CssBaseline/>
       <AuthProvider>
         <Routes>
+          {/* Public routes */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/unauthorized" element={<UnauthorizedPage />} />
           
           {/* Protected routes */}
           <Route 
@@ -50,14 +54,60 @@ function App() {
             }
           >
             <Route index element={<HomePage />} />
-            <Route path="agents" element={<AgentsPage />} />
-            <Route path="jobs" element={<JobsPage />} />
-            <Route path="packages" element={<PackagesPage />} />
-            <Route path="schedules" element={<SchedulesPage />} />
-            <Route path="queues" element={<QueuesPage />} />
-            <Route path="subscription" element={<SubscriptionPage />} />
-            <Route path="subscription/tiers" element={<SubscriptionTiersPage />} />
+            
+            {/* Agents - requires admin role or agent:read permission */}
+            <Route 
+              path="agents" 
+              element={
+                <ProtectedRoute requiredRoles={['admin', 'Admin']} requiredPermissions={['agent:read']}>
+                  <AgentsPage />
+                </ProtectedRoute>
+              }
+            />
+            
+            {/* Jobs - requires job:read permission */}
+            <Route 
+              path="jobs" 
+              element={
+                <ProtectedRoute requiredPermissions={['job:read']}>
+                  <JobsPage />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Packages - requires package:read permission */}
+            <Route 
+              path="packages" 
+              element={
+                <ProtectedRoute requiredPermissions={['package:read']}>
+                  <PackagesPage />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Schedules - requires schedule:read permission */}
+            <Route 
+              path="schedules" 
+              element={
+                <ProtectedRoute requiredPermissions={['schedule:read']}>
+                  <SchedulesPage />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Queues - requires queue:read permission */}
+            <Route 
+              path="queues" 
+              element={
+                <ProtectedRoute requiredPermissions={['queue:read']}>
+                  <QueuesPage />
+                </ProtectedRoute>
+              } 
+            />
           </Route>
+          
+          {/* Fallback routes */}
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </AuthProvider>
     </ThemeProvider>

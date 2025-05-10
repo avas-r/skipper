@@ -1,9 +1,15 @@
-// src/pages/AgentsPage.js
-import React from 'react';
-import { Box, Typography, Paper } from '@mui/material';
-import AgentManagementTabs from '../components/agents/AgentManagementTabs';
+// frontend/src/pages/AgentsPage.js
+import React, { useState } from 'react';
+import { Box, Typography, Paper, Tab, Tabs } from '@mui/material';
+import AgentManagement from '../components/agents/AgentManagement';
 
 function AgentsPage() {
+  const [tabIndex, setTabIndex] = useState(0);
+
+  const handleTabChange = (event, newValue) => {
+    setTabIndex(newValue);
+  };
+
   return (
     <Box>
       <Typography variant="h4" component="h1" gutterBottom>
@@ -13,9 +19,14 @@ function AgentsPage() {
         View, add, and manage automation agents and service accounts across your organization.
       </Typography>
       
-      <Paper sx={{ p: 3, mb: 4 }}>
-        <AgentManagementTabs />
+      <Paper sx={{ mb: 3 }}>
+        <Tabs value={tabIndex} onChange={handleTabChange}>
+          <Tab label="Agents" />
+          <Tab label="Service Accounts" />
+        </Tabs>
       </Paper>
+      
+      <AgentManagement initialTab={tabIndex} />
     </Box>
   );
 }

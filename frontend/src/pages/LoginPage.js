@@ -1,3 +1,4 @@
+// frontend/src/pages/LoginPage.js
 import React, { useState } from 'react';
 import { useNavigate, Link as RouterLink, useLocation } from 'react-router-dom';
 import {
@@ -34,47 +35,38 @@ function LoginPage() {
     }));
   };
 
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  setError('');
-  setLoading(true);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
 
-  try {
-    console.log('Attempting login for user:', credentials.username);
-    
-    // Use the AuthContext login function
-    await login(credentials.username, credentials.password);
-    
-    console.log('Login successful');
-    
-    // If came from another page, go back to that page, otherwise go to home
-    const from = location.state?.from?.pathname || '/';
-    navigate(from, { replace: true });
-  } catch (error) {
-    console.error('Login error:', error);
-    
-    if (error.response) {
-      // The request was made and the server responded with an error status
-      console.error('Error response data:', error.response.data);
-      console.error('Error response status:', error.response.status);
+    try {
+      // Use the AuthContext login function
+      await login(credentials.username, credentials.password);
       
-      setError(
-        error.response.data?.detail || 
-        `Login failed with status ${error.response.status}. Please try again.`
-      );
-    } else if (error.request) {
-      // The request was made but no response was received
-      console.error('No response received:', error.request);
-      setError('Server not responding. Please try again later.');
-    } else {
-      // Something happened in setting up the request
-      console.error('Request setup error:', error.message);
-      setError(`Request error: ${error.message}`);
+      // If came from another page, go back to that page, otherwise go to home
+      const from = location.state?.from?.pathname || '/';
+      navigate(from, { replace: true });
+    } catch (error) {
+      console.error('Login error:', error);
+      
+      if (error.response) {
+        // The request was made and the server responded with an error status
+        setError(
+          error.response.data?.detail || 
+          `Login failed with status ${error.response.status}. Please try again.`
+        );
+      } else if (error.request) {
+        // The request was made but no response was received
+        setError('Server not responding. Please try again later.');
+      } else {
+        // Something happened in setting up the request
+        setError(`Request error: ${error.message}`);
+      }
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
-  }
-};
+  };
 
   return (
     <Container component="main" maxWidth="xs">
@@ -121,9 +113,9 @@ const handleSubmit = async (e) => {
               required
               fullWidth
               id="username"
-              label="Username"
+              label="Email Address"
               name="username"
-              autoComplete="username"
+              autoComplete="email"
               autoFocus
               value={credentials.username}
               onChange={handleChange}

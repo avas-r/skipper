@@ -3,18 +3,9 @@ import apiClient from './apiClient';
 
 /**
  * Get all agents with optional filtering.
- * 
- * @param {Object} filters - Optional filter parameters
- * @param {string} filters.status - Filter by agent status
- * @param {string} filters.search - Search term
- * @param {Array<string>} filters.tags - Filter by tags
- * @param {number} filters.skip - Number of records to skip (pagination)
- * @param {number} filters.limit - Maximum records to return (pagination)
- * @returns {Promise<Array>} List of agents
  */
 export const getAgents = async (filters = {}) => {
   try {
-    // Build query parameters
     const params = new URLSearchParams();
     
     Object.entries(filters).forEach(([key, value]) => {
@@ -38,9 +29,6 @@ export const getAgents = async (filters = {}) => {
 
 /**
  * Get a single agent by ID.
- * 
- * @param {string} agentId - Agent ID
- * @returns {Promise<Object>} Agent data
  */
 export const getAgentById = async (agentId) => {
   try {
@@ -55,9 +43,6 @@ export const getAgentById = async (agentId) => {
 
 /**
  * Create a new agent.
- * 
- * @param {Object} agentData - Agent data
- * @returns {Promise<Object>} Created agent
  */
 export const createAgent = async (agentData) => {
   try {
@@ -72,10 +57,6 @@ export const createAgent = async (agentData) => {
 
 /**
  * Update an existing agent.
- * 
- * @param {string} agentId - Agent ID
- * @param {Object} agentData - Agent update data
- * @returns {Promise<Object>} Updated agent
  */
 export const updateAgent = async (agentId, agentData) => {
   try {
@@ -90,9 +71,6 @@ export const updateAgent = async (agentId, agentData) => {
 
 /**
  * Delete an agent.
- * 
- * @param {string} agentId - Agent ID
- * @returns {Promise<boolean>} True if deletion successful
  */
 export const deleteAgent = async (agentId) => {
   try {
@@ -107,17 +85,9 @@ export const deleteAgent = async (agentId) => {
 
 /**
  * Get agent logs.
- * 
- * @param {string} agentId - Agent ID
- * @param {Object} options - Optional parameters
- * @param {string} options.logLevel - Filter by log level
- * @param {number} options.skip - Number of records to skip (pagination)
- * @param {number} options.limit - Maximum records to return (pagination)
- * @returns {Promise<Array>} List of agent logs
  */
 export const getAgentLogs = async (agentId, options = {}) => {
   try {
-    // Build query parameters
     const params = new URLSearchParams();
     
     Object.entries(options).forEach(([key, value]) => {
@@ -137,12 +107,6 @@ export const getAgentLogs = async (agentId, options = {}) => {
 
 /**
  * Send a command to an agent.
- * 
- * @param {string} agentId - Agent ID
- * @param {Object} commandData - Command data
- * @param {string} commandData.command_type - Command type
- * @param {Object} commandData.parameters - Command parameters
- * @returns {Promise<Object>} Updated agent
  */
 export const sendAgentCommand = async (agentId, commandData) => {
   try {
@@ -157,11 +121,6 @@ export const sendAgentCommand = async (agentId, commandData) => {
 
 /**
  * Enable auto-login for an agent.
- * 
- * @param {string} agentId - Agent ID
- * @param {string} serviceAccountId - Service account ID to use for auto-login
- * @param {string} sessionType - Session type (windows, web, etc.)
- * @returns {Promise<Object>} Updated agent
  */
 export const enableAgentAutoLogin = async (agentId, serviceAccountId, sessionType = 'windows') => {
   try {
@@ -181,9 +140,6 @@ export const enableAgentAutoLogin = async (agentId, serviceAccountId, sessionTyp
 
 /**
  * Disable auto-login for an agent.
- * 
- * @param {string} agentId - Agent ID
- * @returns {Promise<Object>} Updated agent
  */
 export const disableAgentAutoLogin = async (agentId) => {
   try {
@@ -198,9 +154,6 @@ export const disableAgentAutoLogin = async (agentId) => {
 
 /**
  * Check for stale agents and mark them as offline.
- * 
- * @param {number} maxSilenceMinutes - Maximum silence time in minutes
- * @returns {Promise<Object>} Result
  */
 export const checkStaleAgents = async (maxSilenceMinutes = 5) => {
   try {

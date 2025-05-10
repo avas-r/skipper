@@ -7,10 +7,6 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 /**
  * Login user and get access token
- * 
- * @param {string} email User email
- * @param {string} password User password
- * @returns {Promise<Object>} User data
  */
 export const login = async (email, password) => {
   try {
@@ -73,8 +69,6 @@ export const logout = () => {
 
 /**
  * Refresh access token
- * 
- * @returns {Promise<Object>} New tokens
  */
 export const refreshToken = async () => {
   try {
@@ -106,8 +100,6 @@ export const refreshToken = async () => {
 
 /**
  * Get current user data
- * 
- * @returns {Promise<Object>} Current user data
  */
 export const getCurrentUser = async () => {
   const userJson = localStorage.getItem('user');
@@ -133,8 +125,6 @@ export const getCurrentUser = async () => {
 
 /**
  * Check if user is authenticated
- * 
- * @returns {boolean} True if authenticated
  */
 export const isAuthenticated = () => {
   return !!localStorage.getItem('access_token');
@@ -142,8 +132,6 @@ export const isAuthenticated = () => {
 
 /**
  * Get user tenant ID
- * 
- * @returns {string|null} Tenant ID or null
  */
 export const getUserTenant = () => {
   const userJson = localStorage.getItem('user');
@@ -155,8 +143,6 @@ export const getUserTenant = () => {
 
 /**
  * Get user roles
- * 
- * @returns {Array<string>} List of role names
  */
 export const getUserRoles = () => {
   const userJson = localStorage.getItem('user');
@@ -168,9 +154,6 @@ export const getUserRoles = () => {
 
 /**
  * Check if user has a specific role
- * 
- * @param {string} roleName Role name to check
- * @returns {boolean} True if user has the role
  */
 export const hasRole = (roleName) => {
   const roles = getUserRoles();

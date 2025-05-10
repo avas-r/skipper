@@ -24,9 +24,7 @@ from app.schemas.agent import (
     AgentCreate, 
     AgentUpdate, 
     AgentHeartbeatRequest,
-    AgentCommandRequest,
-    AgentLogResponse,
-    AgentHeartbeatResponse
+    AgentCommandRequest
 )
 from app.messaging.producer import MessageProducer
 
@@ -36,33 +34,14 @@ class AgentManager:
     """Agent manager service for handling agent operations"""
     
     def __init__(self, db: Session, message_producer: Optional[MessageProducer] = None):
-        """
-        Initialize the agent manager.
-        
-        Args:
-            db: Database session
-            message_producer: Optional message producer for agent commands
-        """
+        """Initialize the agent manager."""
         self.db = db
         self.message_producer = message_producer
         
     def get_agents(self, tenant_id: str, status: Optional[str] = None, 
                    search: Optional[str] = None, tags: Optional[List[str]] = None,
                    skip: int = 0, limit: int = 100) -> List[Agent]:
-        """
-        Get list of agents with filtering.
-        
-        Args:
-            tenant_id: Tenant ID
-            status: Optional status filter
-            search: Optional search term
-            tags: Optional tags to filter
-            skip: Number of records to skip (pagination)
-            limit: Maximum records to return (pagination)
-            
-        Returns:
-            List[Agent]: List of agents
-        """
+        """Get list of agents with filtering."""
         query = self.db.query(Agent).filter(Agent.tenant_id == tenant_id)
         
         # Apply status filter
@@ -90,36 +69,14 @@ class AgentManager:
         return query.all()
         
     def get_agent(self, agent_id: str, tenant_id: str) -> Optional[Agent]:
-        """
-        Get agent by ID.
-        
-        Args:
-            agent_id: Agent ID
-            tenant_id: Tenant ID
-            
-        Returns:
-            Optional[Agent]: Agent or None if not found
-        """
+        """Get agent by ID."""
         return self.db.query(Agent).filter(
             Agent.agent_id == agent_id,
             Agent.tenant_id == tenant_id
         ).first()
         
     def create_agent(self, agent_data: AgentCreate, tenant_id: str, user_id: str) -> Agent:
-        """
-        Create a new agent.
-        
-        Args:
-            agent_data: Agent creation data
-            tenant_id: Tenant ID
-            user_id: User ID
-            
-        Returns:
-            Agent: Created agent
-            
-        Raises:
-            HTTPException: If agent with same machine_id already exists
-        """
+        """Create a new agent."""
         # Check if agent already exists
         existing_agent = self.db.query(Agent).filter(
             Agent.machine_id == agent_data.machine_id,
@@ -174,21 +131,7 @@ class AgentManager:
     
     def update_agent(self, agent_id: str, agent_data: AgentUpdate, 
                      tenant_id: str, user_id: str) -> Agent:
-        """
-        Update an existing agent.
-        
-        Args:
-            agent_id: Agent ID
-            agent_data: Agent update data
-            tenant_id: Tenant ID
-            user_id: User ID
-            
-        Returns:
-            Agent: Updated agent
-            
-        Raises:
-            HTTPException: If agent not found
-        """
+        """Update an existing agent."""
         # Get agent
         agent = self.get_agent(agent_id, tenant_id)
         if not agent:
@@ -245,20 +188,7 @@ class AgentManager:
         return agent
     
     def delete_agent(self, agent_id: str, tenant_id: str, user_id: str) -> bool:
-        """
-        Delete an agent.
-        
-        Args:
-            agent_id: Agent ID
-            tenant_id: Tenant ID
-            user_id: User ID
-            
-        Returns:
-            bool: True if deletion successful
-            
-        Raises:
-            HTTPException: If agent not found
-        """
+        """Delete an agent."""
         # Get agent
         agent = self.get_agent(agent_id, tenant_id)
         if not agent:
@@ -318,19 +248,7 @@ class AgentManager:
     def get_agent_logs(self, agent_id: str, tenant_id: str, 
                        log_level: Optional[str] = None,
                        skip: int = 0, limit: int = 100) -> List[AgentLog]:
-        """
-        Get logs for a specific agent.
-        
-        Args:
-            agent_id: Agent ID
-            tenant_id: Tenant ID
-            log_level: Optional log level filter
-            skip: Number of records to skip (pagination)
-            limit: Maximum records to return (pagination)
-            
-        Returns:
-            List[AgentLog]: List of agent logs
-        """
+        """Get logs for a specific agent."""
         query = self.db.query(AgentLog).filter(
             AgentLog.agent_id == agent_id,
             AgentLog.tenant_id == tenant_id
@@ -349,21 +267,7 @@ class AgentManager:
     
     def send_command(self, agent_id: str, tenant_id: str, 
                      command: AgentCommandRequest, user_id: str) -> bool:
-        """
-        Send a command to an agent.
-        
-        Args:
-            agent_id: Agent ID
-            tenant_id: Tenant ID
-            command: Command to send
-            user_id: User ID sending the command
-            
-        Returns:
-            bool: True if command was sent successfully
-            
-        Raises:
-            HTTPException: If agent not found or message producer not available
-        """
+        """Send a command to an agent."""
         # Get agent
         agent = self.get_agent(agent_id, tenant_id)
         if not agent:
@@ -397,6 +301,14 @@ class AgentManager:
                 routing_key=f"agent.{agent_id}.command",
                 message=message
             )
+            
+            # Update agent status based on command
+            if command.command_type == "start":
+                agent.status = "starting"
+            elif command.command_type == "stop":
+                agent.status = "stopping"
+            
+            self.db.commit()
             
             # Log command
             self._log_agent_activity(
@@ -435,16 +347,7 @@ class AgentManager:
             )
     
     def register_agent(self, registration_data: AgentCreate, tenant_id: str) -> Agent:
-        """
-        Register an agent from an agent itself.
-        
-        Args:
-            registration_data: Agent registration data
-            tenant_id: Tenant ID
-            
-        Returns:
-            Agent: Registered agent (new or updated)
-        """
+        """Register an agent from an agent itself."""
         # Check if agent already exists by machine ID
         existing_agent = self.db.query(Agent).filter(
             Agent.machine_id == registration_data.machine_id,
@@ -517,17 +420,7 @@ class AgentManager:
     
     def update_heartbeat(self, agent_id: str, tenant_id: str, 
                         heartbeat: AgentHeartbeatRequest) -> Optional[Agent]:
-        """
-        Update agent heartbeat.
-        
-        Args:
-            agent_id: Agent ID
-            tenant_id: Tenant ID
-            heartbeat: Heartbeat data
-            
-        Returns:
-            Optional[Agent]: Updated agent or None if not found
-        """
+        """Update agent heartbeat."""
         # Get agent
         agent = self.get_agent(agent_id, tenant_id)
         if not agent:
@@ -569,22 +462,7 @@ class AgentManager:
     def configure_auto_login(self, agent_id: str, tenant_id: str, 
                            service_account_id: str, session_type: str,
                            user_id: str) -> Agent:
-        """
-        Configure auto-login for an agent.
-        
-        Args:
-            agent_id: Agent ID
-            tenant_id: Tenant ID
-            service_account_id: Service account ID to use for auto-login
-            session_type: Session type (windows, web, etc.)
-            user_id: User ID making the change
-            
-        Returns:
-            Agent: Updated agent
-            
-        Raises:
-            HTTPException: If agent or service account not found
-        """
+        """Configure auto-login for an agent."""
         # Get agent
         agent = self.get_agent(agent_id, tenant_id)
         if not agent:
@@ -645,20 +523,7 @@ class AgentManager:
         return agent
     
     def disable_auto_login(self, agent_id: str, tenant_id: str, user_id: str) -> Agent:
-        """
-        Disable auto-login for an agent.
-        
-        Args:
-            agent_id: Agent ID
-            tenant_id: Tenant ID
-            user_id: User ID making the change
-            
-        Returns:
-            Agent: Updated agent
-            
-        Raises:
-            HTTPException: If agent not found
-        """
+        """Disable auto-login for an agent."""
         # Get agent
         agent = self.get_agent(agent_id, tenant_id)
         if not agent:
@@ -713,25 +578,54 @@ class AgentManager:
         )
         
         return agent
-
+    
     def check_stale_agents(self, max_silence_minutes: int = 5) -> int:
-        """Mark agents as offline if no heartbeat received"""
+        """
+        Check for stale agents and mark them as offline.
+        
+        Args:
+            max_silence_minutes: Maximum silence time in minutes
+            
+        Returns:
+            int: Number of agents marked offline
+        """
         cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=max_silence_minutes)
         
-        # Single query to update all stale agents
-        result = self.db.query(Agent).filter(
-            Agent.status.in_(["online", "busy"]),
-            Agent.last_heartbeat < cutoff_time
-        ).update(
-            {
-                Agent.status: "offline", 
-                Agent.updated_at: datetime.now(timezone.utc)
-            },
-            synchronize_session=False
-        )
+        # Find stale agents
+        stale_agents = self.db.query(Agent).filter(
+            Agent.status.in_(["online", "busy", "starting"]),
+            or_(
+                Agent.last_heartbeat < cutoff_time,
+                Agent.last_heartbeat.is_(None)
+            )
+        ).all()
         
-        self.db.commit()
-        return result    
+        # Update status to offline
+        count = 0
+        for agent in stale_agents:
+            old_status = agent.status
+            agent.status = "offline"
+            agent.updated_at = datetime.now(timezone.utc)
+            
+            # Log status change
+            self._log_agent_activity(
+                agent.agent_id,
+                agent.tenant_id,
+                "warning",
+                f"Agent marked offline due to inactivity: {agent.name}",
+                {
+                    "last_heartbeat": agent.last_heartbeat.isoformat() if agent.last_heartbeat else None,
+                    "silence_minutes": max_silence_minutes,
+                    "old_status": old_status
+                }
+            )
+            
+            count += 1
+        
+        if count > 0:
+            self.db.commit()
+            
+        return count
     
     def _generate_api_key(self) -> str:
         """

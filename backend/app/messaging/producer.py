@@ -78,7 +78,7 @@ class MessageProducer:
         message_id: Optional[str] = None,
         correlation_id: Optional[str] = None,
         headers: Optional[Dict[str, Any]] = None
-    ):
+    ) -> str:
         """
         Send a message to the message broker.
         
@@ -130,6 +130,66 @@ class MessageProducer:
         except Exception as e:
             logger.error(f"Failed to send message to {exchange}:{routing_key}: {e}")
             raise
+    
+    def send_message_sync(
+        self, 
+        exchange: str, 
+        routing_key: str, 
+        message_data: Dict[str, Any]
+    ) -> bool:
+        """
+        Synchronous version of send_message for use in synchronous code.
+        
+        This should only be used when async/await cannot be used.
+        
+        Args:
+            exchange: Exchange name
+            routing_key: Routing key for the message
+            message_data: Message data (will be converted to JSON)
+            
+        Returns:
+            bool: True if message was sent successfully
+        """
+        import pika
+        
+        try:
+            # Connect to RabbitMQ
+            parameters = pika.URLParameters(settings.RABBITMQ_URI)
+            connection = pika.BlockingConnection(parameters)
+            channel = connection.channel()
+            
+            # Declare exchange
+            channel.exchange_declare(
+                exchange=exchange,
+                exchange_type='direct' if exchange in ['jobs', 'agents'] else 'topic',
+                durable=True
+            )
+            
+            # Prepare message
+            message_id = str(uuid.uuid4())
+            message_body = json.dumps(message_data).encode()
+            
+            # Publish message
+            channel.basic_publish(
+                exchange=exchange,
+                routing_key=routing_key,
+                body=message_body,
+                properties=pika.BasicProperties(
+                    delivery_mode=2,  # Make message persistent
+                    message_id=message_id,
+                    content_type='application/json'
+                )
+            )
+            
+            # Close connection
+            connection.close()
+            
+            logger.debug(f"Sent sync message to {exchange}:{routing_key}, ID: {message_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to send sync message to {exchange}:{routing_key}: {e}")
+            return False
 
 
 # Singleton instance of message producer

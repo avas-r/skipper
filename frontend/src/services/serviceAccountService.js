@@ -3,17 +3,9 @@ import apiClient from './apiClient';
 
 /**
  * Get all service accounts with optional filtering.
- * 
- * @param {Object} filters - Optional filter parameters
- * @param {string} filters.status - Filter by account status
- * @param {string} filters.search - Search term
- * @param {number} filters.skip - Number of records to skip (pagination)
- * @param {number} filters.limit - Maximum records to return (pagination)
- * @returns {Promise<Array>} List of service accounts
  */
 export const getServiceAccounts = async (filters = {}) => {
   try {
-    // Build query parameters
     const params = new URLSearchParams();
     
     Object.entries(filters).forEach(([key, value]) => {
@@ -37,9 +29,6 @@ export const getServiceAccounts = async (filters = {}) => {
 
 /**
  * Get a single service account by ID.
- * 
- * @param {string} accountId - Service account ID
- * @returns {Promise<Object>} Service account data
  */
 export const getServiceAccountById = async (accountId) => {
   try {
@@ -54,9 +43,6 @@ export const getServiceAccountById = async (accountId) => {
 
 /**
  * Create a new service account.
- * 
- * @param {Object} accountData - Service account data
- * @returns {Promise<Object>} Created service account
  */
 export const createServiceAccount = async (accountData) => {
   try {
@@ -71,10 +57,6 @@ export const createServiceAccount = async (accountData) => {
 
 /**
  * Update an existing service account.
- * 
- * @param {string} accountId - Service account ID
- * @param {Object} accountData - Service account update data
- * @returns {Promise<Object>} Updated service account
  */
 export const updateServiceAccount = async (accountId, accountData) => {
   try {
@@ -89,9 +71,6 @@ export const updateServiceAccount = async (accountId, accountData) => {
 
 /**
  * Delete a service account.
- * 
- * @param {string} accountId - Service account ID
- * @returns {Promise<boolean>} True if deletion successful
  */
 export const deleteServiceAccount = async (accountId) => {
   try {

@@ -80,12 +80,26 @@ export const AuthProvider = ({ children }) => {
     setError(null);
   };
   
+  // Add a function to check if user has specific permission
+  const hasPermission = (permission) => {
+    if (!user || !user.permissions) return false;
+    return user.permissions.includes(permission);
+  };
+  
+  // Add a function to check if user has one of the specified roles
+  const hasAnyRole = (roles) => {
+    if (!user || !user.roles) return false;
+    return roles.some(role => user.roles.includes(role));
+  };
+  
   return (
     <AuthContext.Provider value={{ 
       user, 
       authenticated, 
       loading, 
       error,
+      hasPermission,
+      hasAnyRole,
       login, 
       logout 
     }}>

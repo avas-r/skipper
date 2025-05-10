@@ -1,15 +1,19 @@
-// src/components/auth/ProtectedRoute.js
+// frontend/src/components/auth/ProtectedRoute.js
 import React, { useState, useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { Box, CircularProgress, Typography } from '@mui/material';
 import { useAuth } from '../../context/AuthContext';
 import apiClient from '../../services/apiClient';
 
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, requiredPermissions = [], requiredRoles = [] }) => {
   const location = useLocation();
-  const { authenticated, loading, user } = useAuth();
+  const { authenticated, loading, user, hasPermission, hasAnyRole } = useAuth();
   const [verifyingAuth, setVerifyingAuth] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+
+  console.log('User permissions:', user?.permissions);
+  console.log('User roles:', user?.roles);
+  console.log('Required permissions:', requiredPermissions);
 
   // Verify token by making an API call
   useEffect(() => {
@@ -20,22 +24,48 @@ const ProtectedRoute = ({ children }) => {
       }
 
       try {
-        console.log('ProtectedRoute: Verifying token...');
         // Try to call the /auth/me endpoint to verify token
         await apiClient.get('/api/v1/auth/me');
         
-        console.log('ProtectedRoute: Token is valid');
-        setIsAuthenticated(true);
+        // Check permissions and roles
+        let authorized = true;
+        
+        // If we have specific permission requirements, check them
+        if (requiredPermissions.length > 0) {
+          // If the user is admin or superuser, allow access regardless of specific permissions
+          const isAdmin = user?.roles?.some(role => 
+            role === 'admin' || role === 'superuser' || role === 'Admin' || role === 'Superuser'
+          );
+          
+          if (isAdmin) {
+            authorized = true;
+          } else {
+            // Otherwise check for specific permissions
+            authorized = requiredPermissions.every(permission => {
+              const hasPermissionValue = user?.permissions?.includes(permission);
+              console.log(`Checking permission ${permission}: ${hasPermissionValue}`);
+              return hasPermissionValue;
+            });
+          }
+        }
+        
+        // If we have role requirements and permission check passed, check roles
+        if (authorized && requiredRoles.length > 0) {
+          authorized = user?.roles?.some(role => requiredRoles.includes(role));
+        }
+        
+        console.log('Authorization result:', authorized);
+        setIsAuthorized(authorized);
       } catch (error) {
-        console.error('ProtectedRoute: Token verification failed', error);
-        setIsAuthenticated(false);
+        console.error('Token verification failed', error);
+        setIsAuthorized(false);
       } finally {
         setVerifyingAuth(false);
       }
     };
 
     verifyToken();
-  }, [authenticated]);
+  }, [authenticated, user, requiredPermissions, requiredRoles]);
 
   // Show loading state while verifying auth
   if (loading || verifyingAuth) {
@@ -57,14 +87,16 @@ const ProtectedRoute = ({ children }) => {
     );
   }
 
-  // If user is not authenticated after verification, redirect to login
-  if (!authenticated || !isAuthenticated) {
-    console.log('Not authenticated, redirecting to login');
-    // Redirect to login page, but save the current location to redirect back after login
+  // If user is not authenticated, redirect to login
+  if (!authenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
+  
+  // If user doesn't have required permissions/roles
+  if (!isAuthorized && (requiredPermissions.length > 0 || requiredRoles.length > 0)) {
+    return <Navigate to="/unauthorized" replace />;
+  }
 
-  console.log('Authentication verified, rendering protected content for user:', user?.email);
   return children;
 };
 
