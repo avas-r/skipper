@@ -1,4 +1,4 @@
-// src/services/apiClient.js
+// frontend/src/services/apiClient.js
 import axios from 'axios';
 
 // Get API URL from environment variable, with fallback
@@ -9,7 +9,8 @@ const apiClient = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json'
-  }
+  },
+  timeout: 30000 // 30-second timeout
 });
 
 // Add request interceptor to add authorization header
@@ -21,9 +22,6 @@ apiClient.interceptors.request.use(
     // If token exists, add Authorization header
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-      console.log('Adding auth header to request:', config.url);
-    } else {
-      console.warn('No token found for request:', config.url);
     }
     
     return config;
@@ -54,11 +52,16 @@ apiClient.interceptors.response.use(
           return Promise.reject(error);
         }
         
-        // Encode refresh token for safe URL usage
-        const encodedToken = encodeURIComponent(refreshToken);
-        console.log('Refreshing token in apiClient interceptor');
+        // Create form data for refresh request
+        const formData = new URLSearchParams();
+        formData.append('refresh_token', refreshToken);
         
-        const response = await axios.post(`${API_URL}/api/v1/auth/refresh?refresh_token=${encodedToken}`);
+        // Make refresh request
+        const response = await axios.post(`${API_URL}/api/v1/auth/refresh`, formData, {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
+        });
         
         // Update tokens in localStorage
         localStorage.setItem('access_token', response.data.access_token);
@@ -68,14 +71,15 @@ apiClient.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${response.data.access_token}`;
         return axios(originalRequest);
       } catch (refreshError) {
+        // Handle refresh token error
         console.error('Token refresh failed:', refreshError);
         
-        // Refresh token failed, clear auth
+        // Clear auth data
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
         localStorage.removeItem('user');
         
-        // Redirect to login
+        // Redirect to login page
         window.location.href = '/login';
         
         return Promise.reject(refreshError);

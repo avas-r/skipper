@@ -1,3 +1,4 @@
+// frontend/src/components/agents/AgentList.js
 import React, { useState, useEffect } from 'react';
 import { 
   Box, Typography, Paper, Button, 
@@ -10,6 +11,9 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import ErrorIcon from '@mui/icons-material/Error';
+import WarningIcon from '@mui/icons-material/Warning';
 import { getAgents } from '../../services/agentService';
 
 function AgentList() {
@@ -34,6 +38,37 @@ function AgentList() {
     } finally {
       setLoading(false);
     }
+  };
+  
+  const renderAgentStatus = (status) => {
+    let color, icon;
+    
+    switch (status) {
+      case 'online':
+        color = 'success';
+        icon = <CheckCircleIcon fontSize="small" />;
+        break;
+      case 'offline':
+        color = 'error';
+        icon = <ErrorIcon fontSize="small" />;
+        break;
+      case 'busy':
+        color = 'warning';
+        icon = <WarningIcon fontSize="small" />;
+        break;
+      default:
+        color = 'default';
+        icon = null;
+    }
+    
+    return (
+      <Chip 
+        icon={icon}
+        label={status} 
+        color={color} 
+        size="small" 
+      />
+    );
   };
   
   const filteredAgents = agents?.filter(agent => 
@@ -101,13 +136,7 @@ function AgentList() {
                 <TableRow key={agent.agent_id}>
                   <TableCell>{agent.name}</TableCell>
                   <TableCell>{agent.machine_id}</TableCell>
-                  <TableCell>
-                    <Chip 
-                      label={agent.status} 
-                      color={agent.status === 'online' ? 'success' : 'error'} 
-                      size="small" 
-                    />
-                  </TableCell>
+                  <TableCell>{renderAgentStatus(agent.status)}</TableCell>
                   <TableCell>{agent.ip_address}</TableCell>
                   <TableCell>{agent.version}</TableCell>
                   <TableCell align="right">

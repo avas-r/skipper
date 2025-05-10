@@ -1,106 +1,5 @@
-/**
- * Agent service for interacting with the agent management API.
- * 
- * This service provides functions to manage agents:
- * - List, create, update, delete agents
- * - Get agent logs
- * - Send commands to agents
- * - Configure auto-login
- */
-
-import axios from 'axios';
-
-// Get API URL from environment variable, with fallback
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-
-// Create axios instance
-const apiClient = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-// Add request interceptor to include token from localStorage
-apiClient.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('access_token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
-
-// Add response interceptor to handle token expiration and refresh
-apiClient.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
-    
-    // If 401 error and we haven't tried to refresh yet
-    if (error.response && error.response.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-      
-      try {
-        console.log('Attempting to refresh token...');
-        // Attempt to refresh the token
-        const refreshToken = localStorage.getItem('refresh_token');
-        
-        if (refreshToken) {
-          // The refresh endpoint expects refresh_token as a query parameter
-          const encodedToken = encodeURIComponent(refreshToken);
-          const response = await axios.post(`${API_URL}/api/v1/auth/refresh?refresh_token=${encodedToken}`);
-          
-          console.log('Token refresh successful');
-          
-          if (response.data) {
-            try {
-              // Store new tokens
-              localStorage.setItem('access_token', response.data.access_token);
-              localStorage.setItem('refresh_token', response.data.refresh_token);
-              
-              // Also update the user data to keep it in sync
-              try {
-                const userResponse = await axios.get(`${API_URL}/api/v1/auth/me`, {
-                  headers: {
-                    'Authorization': `Bearer ${response.data.access_token}`
-                  }
-                });
-                localStorage.setItem('user', JSON.stringify(userResponse.data));
-              } catch (userError) {
-                console.error('Error refreshing user data:', userError);
-              }
-              
-              // Update header and retry request
-              originalRequest.headers.Authorization = `Bearer ${response.data.access_token}`;
-              return axios(originalRequest);
-            } catch (storageError) {
-              console.error('Error storing tokens:', storageError);
-              // Continue with error handling below
-            }
-          }
-        }
-      } catch (refreshError) {
-        console.error('Token refresh failed:', refreshError);
-        if (refreshError.response) {
-          console.error('Refresh error status:', refreshError.response.status);
-          console.error('Refresh error data:', refreshError.response.data);
-        }
-      }
-      
-      console.log('Clearing auth data and redirecting to login');
-      // If refresh fails or no refresh token, clear session and redirect to login
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
-    }
-    
-    return Promise.reject(error);
-  }
-);
+// frontend/src/services/agentService.js
+import apiClient from './apiClient';
 
 /**
  * Get all agents with optional filtering.
@@ -118,27 +17,15 @@ export const getAgents = async (filters = {}) => {
     // Build query parameters
     const params = new URLSearchParams();
     
-    if (filters.status) {
-      params.append('status', filters.status);
-    }
-    
-    if (filters.search) {
-      params.append('search', filters.search);
-    }
-    
-    if (filters.tags && filters.tags.length > 0) {
-      filters.tags.forEach(tag => {
-        params.append('tags', tag);
-      });
-    }
-    
-    if (filters.skip !== undefined) {
-      params.append('skip', filters.skip);
-    }
-    
-    if (filters.limit !== undefined) {
-      params.append('limit', filters.limit);
-    }
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        if (Array.isArray(value)) {
+          value.forEach(item => params.append(key, item));
+        } else {
+          params.append(key, value);
+        }
+      }
+    });
     
     const response = await apiClient.get('/api/v1/agents', { params });
     return response.data;
@@ -233,17 +120,11 @@ export const getAgentLogs = async (agentId, options = {}) => {
     // Build query parameters
     const params = new URLSearchParams();
     
-    if (options.logLevel) {
-      params.append('log_level', options.logLevel);
-    }
-    
-    if (options.skip !== undefined) {
-      params.append('skip', options.skip);
-    }
-    
-    if (options.limit !== undefined) {
-      params.append('limit', options.limit);
-    }
+    Object.entries(options).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value);
+      }
+    });
     
     const response = await apiClient.get(`/api/v1/agents/${agentId}/logs`, { params });
     return response.data;
@@ -284,8 +165,12 @@ export const sendAgentCommand = async (agentId, commandData) => {
  */
 export const enableAgentAutoLogin = async (agentId, serviceAccountId, sessionType = 'windows') => {
   try {
-    const url = `/api/v1/agents/${agentId}/auto-login/enable?service_account_id=${serviceAccountId}&session_type=${sessionType}`;
-    const response = await apiClient.post(url);
+    const params = new URLSearchParams({
+      service_account_id: serviceAccountId,
+      session_type: sessionType
+    });
+    
+    const response = await apiClient.post(`/api/v1/agents/${agentId}/auto-login/enable?${params.toString()}`);
     return response.data;
   } catch (error) {
     throw new Error(

@@ -713,54 +713,25 @@ class AgentManager:
         )
         
         return agent
-    
+
     def check_stale_agents(self, max_silence_minutes: int = 5) -> int:
-        """
-        Check for stale agents and mark them as offline.
-        
-        Args:
-            max_silence_minutes: Maximum silence time in minutes
-            
-        Returns:
-            int: Number of agents marked offline
-        """
+        """Mark agents as offline if no heartbeat received"""
         cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=max_silence_minutes)
         
-        # Find stale agents
-        stale_agents = self.db.query(Agent).filter(
-            Agent.status == "online",
-            or_(
-                Agent.last_heartbeat < cutoff_time,
-                Agent.last_heartbeat.is_(None)
-            )
-        ).all()
+        # Single query to update all stale agents
+        result = self.db.query(Agent).filter(
+            Agent.status.in_(["online", "busy"]),
+            Agent.last_heartbeat < cutoff_time
+        ).update(
+            {
+                Agent.status: "offline", 
+                Agent.updated_at: datetime.now(timezone.utc)
+            },
+            synchronize_session=False
+        )
         
-        # Update status to offline
-        count = 0
-        for agent in stale_agents:
-            old_status = agent.status
-            agent.status = "offline"
-            agent.updated_at = datetime.now(timezone.utc)
-            
-            # Log status change
-            self._log_agent_activity(
-                agent.agent_id,
-                agent.tenant_id,
-                "warning",
-                f"Agent marked offline due to inactivity: {agent.name}",
-                {
-                    "last_heartbeat": agent.last_heartbeat.isoformat() if agent.last_heartbeat else None,
-                    "silence_minutes": max_silence_minutes,
-                    "old_status": old_status
-                }
-            )
-            
-            count += 1
-        
-        if count > 0:
-            self.db.commit()
-            
-        return count
+        self.db.commit()
+        return result    
     
     def _generate_api_key(self) -> str:
         """

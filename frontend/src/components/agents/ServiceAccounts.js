@@ -1,27 +1,37 @@
+// src/components/agents/ServiceAccounts.js
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, Typography, Paper, Button, 
-  CircularProgress, Chip, IconButton, 
-  Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow,
-  TextField
+import {
+  Box, Typography, Paper, Button, CircularProgress,
+  Chip, IconButton, Table, TableBody, TableCell,
+  TableContainer, TableHead, TableRow, TextField,
+  Dialog, DialogActions, DialogContent, DialogTitle,
+  FormControl, InputLabel, Select, MenuItem, Alert
 } from '@mui/material';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import AddIcon from '@mui/icons-material/Add';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import { getServiceAccounts } from '../../services/serviceAccountService';
+import Icon from '../common/Icon';
+import { getServiceAccounts, createServiceAccount, deleteServiceAccount } from '../../services/serviceAccountService';
 
 function ServiceAccounts() {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    username: '',
+    display_name: '',
+    description: '',
+    password: '',
+    account_type: 'robot'
+  });
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [accountToDelete, setAccountToDelete] = useState(null);
+
   useEffect(() => {
     fetchAccounts();
   }, []);
-  
+
   const fetchAccounts = async () => {
     setLoading(true);
     setError('');
@@ -35,13 +45,82 @@ function ServiceAccounts() {
       setLoading(false);
     }
   };
-  
-  const filteredAccounts = accounts?.filter(account => 
+
+  const filteredAccounts = accounts?.filter(account =>
     account.username?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     account.display_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (account.description && account.description.toLowerCase().includes(searchTerm.toLowerCase()))
   );
-  
+
+  const handleOpenDialog = () => {
+    setFormData({
+      username: '',
+      display_name: '',
+      description: '',
+      password: '',
+      account_type: 'robot'
+    });
+    setFormError('');
+    setDialogOpen(true);
+  };
+
+  const handleCloseDialog = () => {
+    setDialogOpen(false);
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleSubmit = async () => {
+    // Validate form
+    if (!formData.username) {
+      setFormError('Username is required');
+      return;
+    }
+    if (!formData.display_name) {
+      setFormError('Display name is required');
+      return;
+    }
+
+    setSubmitLoading(true);
+    setFormError('');
+    try {
+      await createServiceAccount(formData);
+      setDialogOpen(false);
+      fetchAccounts();
+    } catch (err) {
+      console.error('Failed to create service account:', err);
+      setFormError('Failed to create account: ' + (err.message || 'Unknown error'));
+    } finally {
+      setSubmitLoading(false);
+    }
+  };
+
+  const handleDeleteClick = (account) => {
+    setAccountToDelete(account);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!accountToDelete) return;
+    
+    try {
+      await deleteServiceAccount(accountToDelete.account_id);
+      setDeleteDialogOpen(false);
+      setAccountToDelete(null);
+      fetchAccounts();
+    } catch (err) {
+      console.error('Failed to delete service account:', err);
+      setError('Failed to delete account: ' + (err.message || 'Unknown error'));
+      setDeleteDialogOpen(false);
+    }
+  };
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
@@ -49,24 +128,25 @@ function ServiceAccounts() {
           Service Accounts
         </Typography>
         <Box>
-          <Button 
-            variant="outlined" 
-            startIcon={<RefreshIcon />} 
+          <Button
+            variant="outlined"
+            startIcon={<Icon icon="RefreshCw" />}
             onClick={fetchAccounts}
             sx={{ mr: 1 }}
           >
             Refresh
           </Button>
-          <Button 
-            variant="contained" 
-            startIcon={<AddIcon />}
+          <Button
+            variant="contained"
+            startIcon={<Icon icon="Plus" />}
             color="primary"
+            onClick={handleOpenDialog}
           >
             Add Account
           </Button>
         </Box>
       </Box>
-      
+
       <TextField
         fullWidth
         label="Search accounts"
@@ -75,15 +155,13 @@ function ServiceAccounts() {
         onChange={(e) => setSearchTerm(e.target.value)}
         sx={{ mb: 3 }}
       />
-      
+
+      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
           <CircularProgress />
         </Box>
-      ) : error ? (
-        <Paper sx={{ p: 3 }}>
-          <Typography color="error">{error}</Typography>
-        </Paper>
       ) : filteredAccounts?.length ? (
         <TableContainer component={Paper}>
           <Table>
@@ -105,18 +183,22 @@ function ServiceAccounts() {
                   <TableCell>{account.account_type}</TableCell>
                   <TableCell>{account.description}</TableCell>
                   <TableCell>
-                    <Chip 
-                      label={account.status} 
-                      color={account.status === 'active' ? 'success' : 'error'} 
-                      size="small" 
+                    <Chip
+                      label={account.status}
+                      color={account.status === 'active' ? 'success' : 'error'}
+                      size="small"
                     />
                   </TableCell>
                   <TableCell align="right">
                     <IconButton size="small">
-                      <EditIcon fontSize="small" />
+                      <Icon icon="Edit" />
                     </IconButton>
-                    <IconButton size="small" color="error">
-                      <DeleteIcon fontSize="small" />
+                    <IconButton 
+                      size="small" 
+                      color="error"
+                      onClick={() => handleDeleteClick(account)}
+                    >
+                      <Icon icon="Trash2" />
                     </IconButton>
                   </TableCell>
                 </TableRow>
@@ -129,6 +211,101 @@ function ServiceAccounts() {
           <Typography>No service accounts found. Add a new account to get started.</Typography>
         </Paper>
       )}
+
+      {/* Create Account Dialog */}
+      <Dialog open={dialogOpen} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Add Service Account</DialogTitle>
+        <DialogContent>
+          {formError && <Alert severity="error" sx={{ mb: 2, mt: 1 }}>{formError}</Alert>}
+          
+          <TextField
+            autoFocus
+            margin="normal"
+            name="username"
+            label="Username"
+            fullWidth
+            value={formData.username}
+            onChange={handleInputChange}
+            required
+          />
+          <TextField
+            margin="normal"
+            name="display_name"
+            label="Display Name"
+            fullWidth
+            value={formData.display_name}
+            onChange={handleInputChange}
+            required
+          />
+          <TextField
+            margin="normal"
+            name="password"
+            label="Password"
+            type="password"
+            fullWidth
+            value={formData.password}
+            onChange={handleInputChange}
+            helperText="Leave blank for auto-generated password"
+          />
+          <TextField
+            margin="normal"
+            name="description"
+            label="Description"
+            fullWidth
+            multiline
+            rows={3}
+            value={formData.description}
+            onChange={handleInputChange}
+          />
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Account Type</InputLabel>
+            <Select
+              name="account_type"
+              value={formData.account_type}
+              label="Account Type"
+              onChange={handleInputChange}
+            >
+              <MenuItem value="robot">Robot</MenuItem>
+              <MenuItem value="service">Service</MenuItem>
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDialog}>Cancel</Button>
+          <Button 
+            onClick={handleSubmit} 
+            variant="contained"
+            disabled={submitLoading}
+          >
+            {submitLoading ? <CircularProgress size={24} /> : 'Create Account'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle>Delete Service Account</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete the service account 
+            <strong>{accountToDelete ? ` "${accountToDelete.display_name}"` : ''}</strong>?
+            This action cannot be undone.
+          </Typography>
+          <Typography variant="body2" color="error" sx={{ mt: 2 }}>
+            Warning: Deleting a service account that is in use by agents will prevent those agents from functioning properly.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+          <Button 
+            onClick={handleConfirmDelete} 
+            variant="contained" 
+            color="error"
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
