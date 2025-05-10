@@ -8,7 +8,7 @@ import logging
 from datetime import timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Form
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from app.auth.auth import authenticate_user
@@ -71,15 +71,24 @@ def login_access_token(
 
 @router.post("/refresh", response_model=Token)
 def refresh_access_token(
-    refresh_token: str,
+    refresh_token: str = None,
+    refresh_token_form: str = Form(None),
     db: Session = Depends(get_db)
 ) -> Any:
+    # Use form refresh token if provided, otherwise use query param
+    token = refresh_token_form if refresh_token_form else refresh_token
+    
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Refresh token is required",
+        )
     """
     Refresh access token using a refresh token.
     """
     try:
         # Verify refresh token
-        token_data = verify_token(refresh_token)
+        token_data = verify_token(token)
         
         # Check token type
         if token_data.type != "refresh":
@@ -136,7 +145,7 @@ def read_users_me(
     Get current user information.
     """
     # Convert user roles to list of role names
-    roles = [role.role.name for role in current_user.roles]
+    roles = [role.name for role in current_user.roles]
     
     # Create user response
     user_response = UserResponse(

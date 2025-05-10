@@ -2,7 +2,7 @@ import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
-
+import { AuthProvider } from './context/AuthContext';
 // Layout components
 import Dashboard from './components/layout/Dashboard';
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -34,30 +34,32 @@ const theme = createTheme({
 function App() {
   return (
     <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        
-        {/* Protected routes */}
-        <Route 
-          path="/" 
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<HomePage />} />
-          <Route path="agents" element={<AgentsPage />} />
-          <Route path="jobs" element={<JobsPage />} />
-          <Route path="packages" element={<PackagesPage />} />
-          <Route path="schedules" element={<SchedulesPage />} />
-          <Route path="queues" element={<QueuesPage />} />
-          <Route path="subscription" element={<SubscriptionPage />} />
-          <Route path="subscription/tiers" element={<SubscriptionTiersPage />} />
-        </Route>
-      </Routes>
+      <CssBaseline/>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          
+          {/* Protected routes */}
+          <Route 
+            path="/" 
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<HomePage />} />
+            <Route path="agents" element={<AgentsPage />} />
+            <Route path="jobs" element={<JobsPage />} />
+            <Route path="packages" element={<PackagesPage />} />
+            <Route path="schedules" element={<SchedulesPage />} />
+            <Route path="queues" element={<QueuesPage />} />
+            <Route path="subscription" element={<SubscriptionPage />} />
+            <Route path="subscription/tiers" element={<SubscriptionTiersPage />} />
+          </Route>
+        </Routes>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

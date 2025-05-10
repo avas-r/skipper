@@ -42,7 +42,7 @@ def create_app() -> FastAPI:
         allow_origins=["*"],  # In production, this should be restricted to specific origins
         allow_credentials=True,
         allow_methods=["*"],
-        allow_headers=["*"],
+        allow_headers=["*", "Authorization"],  # Explicitly include Authorization
         expose_headers=["*"],
     )
     

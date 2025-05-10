@@ -38,6 +38,9 @@ def create_access_token(
     Returns:
         str: Encoded JWT token
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
@@ -45,7 +48,14 @@ def create_access_token(
             minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
         )
     
-    to_encode = {"exp": expire, "sub": str(subject), "type": "access"}
+    # Convert to timestamp for consistent handling
+    exp_timestamp = int(expire.timestamp())
+    now_timestamp = int(datetime.utcnow().timestamp())
+    
+    logger.info(f"Creating token: Expires at {expire} ({exp_timestamp}), current time: {datetime.utcnow()} ({now_timestamp})")
+    logger.info(f"Token will be valid for {(exp_timestamp - now_timestamp) // 60} minutes")
+    
+    to_encode = {"exp": exp_timestamp, "sub": str(subject), "type": "access", "iat": now_timestamp}
     encoded_jwt = jwt.encode(
         to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM
     )
@@ -65,6 +75,9 @@ def create_refresh_token(
     Returns:
         str: Encoded JWT token
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
@@ -72,7 +85,14 @@ def create_refresh_token(
             days=settings.REFRESH_TOKEN_EXPIRE_DAYS
         )
     
-    to_encode = {"exp": expire, "sub": str(subject), "type": "refresh"}
+    # Convert to timestamp for consistent handling
+    exp_timestamp = int(expire.timestamp())
+    now_timestamp = int(datetime.utcnow().timestamp()) 
+    
+    logger.info(f"Creating refresh token: Expires at {expire} ({exp_timestamp}), current time: {datetime.utcnow()} ({now_timestamp})")
+    logger.info(f"Refresh token will be valid for {(exp_timestamp - now_timestamp) // (60*24)} days")
+    
+    to_encode = {"exp": exp_timestamp, "sub": str(subject), "type": "refresh", "iat": now_timestamp}
     encoded_jwt = jwt.encode(
         to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM
     )
@@ -92,29 +112,60 @@ def verify_token(token: str) -> TokenPayload:
     Raises:
         HTTPException: If token is invalid
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Verifying token: {token[:10]}...")
+    
     try:
+        # Don't verify expiration here - we'll check it manually
         payload = jwt.decode(
-            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM], options={"verify_exp": False}
         )
+        logger.info(f"Token payload: {payload}")
+        
         token_data = TokenPayload(**payload)
         
-        # Check if token is expired
-        if datetime.fromtimestamp(token_data.exp) < datetime.utcnow():
+        # Check if token is expired - with logging
+        now_timestamp = int(datetime.utcnow().timestamp())
+        exp_timestamp = token_data.exp
+        
+        # Add a 60-second buffer to account for clock skew
+        buffer_timestamp = now_timestamp - 60
+        
+        # For logging - convert to datetime
+        now = datetime.utcnow()
+        exp_time = datetime.fromtimestamp(exp_timestamp)
+        buffer_time = datetime.fromtimestamp(buffer_timestamp)
+        
+        logger.info(f"Token expiration: {exp_time} ({exp_timestamp}), current time: {now} ({now_timestamp})")
+        logger.info(f"Time left until expiration: {exp_timestamp - now_timestamp} seconds")
+        
+        if exp_timestamp < buffer_timestamp:
+            logger.warning(f"Token expired by {buffer_timestamp - exp_timestamp} seconds")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token has expired",
+                detail=f"Token has expired at {exp_time} ({exp_timestamp}). Current time is {now} ({now_timestamp})",
                 headers={"WWW-Authenticate": "Bearer"},
             )
             
         return token_data
         
-    except jwt.exceptions.ExpiredSignatureError:
+    except jwt.exceptions.ExpiredSignatureError as e:
+        logger.error(f"JWT expired signature error: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired",
+            detail="Token has expired (signature check)",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except (jwt.exceptions.InvalidTokenError, ValidationError):
+    except jwt.exceptions.InvalidTokenError as e:
+        logger.error(f"JWT invalid token error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except ValidationError as e:
+        logger.error(f"Validation error for token: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",

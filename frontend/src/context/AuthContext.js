@@ -1,101 +1,120 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { 
-  getCurrentUser, 
-  isAuthenticated, 
-  getUserTenant, 
-  getUserRoles, 
-  hasRole, 
-  logout 
-} from '../services/authService';
+import axios from 'axios';
+import apiClient from '../services/apiClient';
+import * as authService from '../services/authService';
+const AuthContext = createContext(null);
 
-// Create context
-const AuthContext = createContext();
-
-// Provider component
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
 
+  // Initialize auth state
   useEffect(() => {
-    // Initialize auth state
-    const initAuth = () => {
-      try {
-        const isAuth = isAuthenticated();
-        setAuthenticated(isAuth);
-        
-        if (isAuth) {
-          const currentUser = getCurrentUser();
-          setUser(currentUser);
-        } else {
-          setUser(null);
+    const initAuth = async () => {
+      const token = localStorage.getItem('access_token');
+      const userStr = localStorage.getItem('user');
+      
+      if (token && userStr) {
+        try {
+          // Verify token by making a direct axios request with the token
+          console.log('Verifying token on init');
+          const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+          
+          // Directly fetch with axios for more control
+          console.log('Using token for auth:', token);
+          const userResponse = await axios.get(`${API_URL}/api/v1/auth/me`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          
+          console.log('Token verified, user data:', userResponse.data);
+          setUser(userResponse.data);
+          localStorage.setItem('user', JSON.stringify(userResponse.data));
+          setAuthenticated(true);
+        } catch (error) {
+          console.error('Token verification failed:', error);
+          
+          try {
+            // Try to refresh the token
+            console.log('Attempting to refresh token');
+            const refreshResult = await authService.refreshToken();
+            
+            if (refreshResult) {
+              // Try again with the new token
+              const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+              const newToken = refreshResult.access_token;
+              
+              const userResponse = await axios.get(`${API_URL}/api/v1/auth/me`, {
+                headers: {
+                  'Authorization': `Bearer ${newToken}`
+                }
+              });
+              
+              console.log('Token refresh successful, user data:', userResponse.data);
+              setUser(userResponse.data);
+              localStorage.setItem('user', JSON.stringify(userResponse.data));
+              setAuthenticated(true);
+            }
+          } catch (refreshError) {
+            console.error('Token refresh failed:', refreshError);
+            logout();
+          }
         }
-      } catch (error) {
-        console.error('Auth initialization error:', error);
+      } else {
+        console.log('No token or user data found in localStorage');
         setAuthenticated(false);
         setUser(null);
-      } finally {
-        setLoading(false);
       }
+      
+      setLoading(false);
     };
-
+    
     initAuth();
   }, []);
-
-  // Provide login state update function
-  const updateAuthState = () => {
-    const isAuth = isAuthenticated();
-    setAuthenticated(isAuth);
-    setUser(isAuth ? getCurrentUser() : null);
+  
+  const login = async (username, password) => {
+    setLoading(true);
+    try {
+      console.log('AuthContext: Logging in user', username);
+      
+      // Use the authService to login
+      const userData = await authService.login(username, password);
+      
+      console.log('AuthContext: Login successful, user data:', userData);
+      
+      // Update state with user data
+      setUser(userData);
+      setAuthenticated(true);
+      
+      return userData;
+    } catch (error) {
+      console.error('AuthContext: Login failed:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
   };
-
-  // Logout function
-  const handleLogout = () => {
-    logout();
+  
+  const logout = () => {
+    console.log('AuthContext: Logging out user');
+    
+    // Use the authService to logout
+    authService.logout();
+    
+    // Update state
     setAuthenticated(false);
     setUser(null);
   };
-
-  // Check if user has specific role
-  const checkRole = (role) => {
-    return hasRole(role);
-  };
-
-  // Get user's tenant ID
-  const getTenant = () => {
-    return getUserTenant();
-  };
-
-  // Get user's roles
-  const getRoles = () => {
-    return getUserRoles();
-  };
-
+  
   return (
-    <AuthContext.Provider
-      value={{
-        authenticated,
-        loading,
-        user,
-        updateAuthState,
-        logout: handleLogout,
-        hasRole: checkRole,
-        getTenant,
-        getRoles
-      }}
-    >
+    <AuthContext.Provider value={{ user, authenticated, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-// Hook to use the auth context
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
+export const useAuth = () => useContext(AuthContext);
 
 export default AuthContext;

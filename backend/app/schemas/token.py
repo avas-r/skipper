@@ -17,6 +17,7 @@ class Token(BaseModel):
 class TokenPayload(BaseModel):
     """Schema for token payload"""
     sub: Optional[str] = None
-    exp: int
+    exp: int  # Expiration timestamp (seconds since epoch)
+    iat: Optional[int] = None  # Issued at timestamp
     type: str = "access"  # "access" or "refresh"
     agent_id: Optional[str] = None  # Set for agent tokens
