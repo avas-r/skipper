@@ -49,16 +49,9 @@ apiClient.interceptors.response.use(
         const refreshToken = localStorage.getItem('refresh_token');
         
         if (refreshToken) {
-          // OAuth2 refresh token flow requires form data
-          const refreshData = new URLSearchParams();
-          refreshData.append('refresh_token', refreshToken);
-          refreshData.append('grant_type', 'refresh_token');  // Required by OAuth2
-          
-          const response = await axios.post(`${API_URL}/api/v1/auth/refresh`, refreshData, {
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-          });
+          // The refresh endpoint expects refresh_token as a query parameter
+          const encodedToken = encodeURIComponent(refreshToken);
+          const response = await axios.post(`${API_URL}/api/v1/auth/refresh?refresh_token=${encodedToken}`);
           
           console.log('Token refresh successful');
           
