@@ -1,282 +1,192 @@
-# Skipper Infrastructure
+# Python Automation Orchestrator
 
-This directory contains the infrastructure code for the Skipper distributed agent management system.
+An enterprise-grade system for managing Python automation scripts at scale.
 
-## Directory Structure
+## Overview
 
-```
-infra/
-├── docker/                      # Docker configuration files
-│   ├── config/                  # Configuration for Docker services
-│   │   ├── grafana/             # Grafana configuration
-│   │   ├── loki/                # Loki configuration
-│   │   ├── prometheus/          # Prometheus configuration
-│   │   ├── promtail/            # Promtail configuration
-│   │   └── redis/               # Redis configuration
-│   └── init-scripts/            # Initialization scripts for services
-│       ├── postgres/            # PostgreSQL initialization scripts
-│       └── rabbitmq/            # RabbitMQ initialization scripts
-├── scripts/                     # Management scripts
-│   ├── deploy.sh                # Deployment management script
-│   └── setup-dev.sh             # Development environment setup script
-├── terraform/                   # Terraform configurations
-│   ├── aws/                     # AWS Terraform configuration
-│   │   ├── environments/        # Environment-specific variables
-│   │   └── modules/             # Terraform modules for AWS
-│   └── gcp/                     # GCP Terraform configuration
-│       └── environments/        # Environment-specific variables
-└── docker-compose.yml           # Local development Docker Compose file
-```
+Python Automation Orchestrator is a comprehensive platform for managing, scheduling, and monitoring Python-based automation scripts across an organization. Similar to UiPath Orchestrator but specifically designed for Python, this system provides a scalable, secure, and feature-rich environment for automation at enterprise scale.
 
-## Local Development
+### Key Features
 
-The local development environment uses Docker Compose to set up all required services.
+- **Asset Management**: Secure storage and management of credentials and configurations
+- **Queue Management**: Prioritized work item processing with transaction handling
+- **Scheduling**: Flexible job scheduling with cron expressions and dependencies
+- **Role-Based Access Control**: Granular permissions for all system resources
+- **Multi-tenancy**: Complete isolation between tenants with resource quotas
+- **Agent Management**: Monitoring and management of distributed automation agents
+- **Job Execution Tracking**: Detailed logging and execution history
+- **Notification System**: Configurable alerts for job status and system events
+
+## Architecture
+
+The system is built with a modern, microservices-inspired architecture:
+
+- **API Layer**: FastAPI-based REST endpoints with OpenAPI documentation
+- **Service Layer**: Modular services with specific responsibilities
+- **Messaging Layer**: Asynchronous communication using RabbitMQ
+- **Data Layer**: PostgreSQL for transactional data and MinIO for object storage
+- **Agent Layer**: Lightweight Python agents running on client machines
+
+## Technical Stack
+
+- **Backend**: Python 3.9+ with FastAPI and SQLAlchemy
+- **Database**: PostgreSQL 13+
+- **Message Broker**: RabbitMQ
+- **Object Storage**: MinIO (S3-compatible)
+- **Frontend**: (Planned) React-based web interface
+- **Containerization**: Docker with Kubernetes orchestration support
+
+## Getting Started
 
 ### Prerequisites
 
-- Docker and Docker Compose
-- Git
-- Python 3.10+
-- Node.js 18+
+- Python 3.9 or higher
+- PostgreSQL 13 or higher
+- RabbitMQ 3.8 or higher
+- MinIO or S3-compatible object storage
 
-### Setup
+### Installation
 
-1. Run the development environment setup script:
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/avas-r/skipper.git
+   cd python-automation-orchestrator
+   ```
 
-```bash
-cd infra/scripts
-chmod +x setup-dev.sh
-./setup-dev.sh
-```
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-2. Start the local environment:
+3. Configure environment variables:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
 
-```bash
-docker-compose -f infra/docker-compose.yml up -d
-```
+4. Initialize the database:
+   ```bash
+   alembic upgrade head
+   ```
 
-3. Access the services:
+5. Start the server:
+   ```bash
+   uvicorn app.main:app --reload
+   ```
 
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:8000/docs
-   - RabbitMQ Management: http://localhost:15672 (guest/guest)
-   - Grafana: http://localhost:3001 (admin/admin)
-   - Prometheus: http://localhost:9090
-   - PGAdmin: http://localhost:5050 (admin@example.com/admin)
-   - Mailhog: http://localhost:8025
-   - MinIO: http://localhost:9001 (minioadmin/minioadmin)
+### Agent Installation
 
-## Cloud Deployment
+#### Method 1: Direct Installation
 
-The cloud deployment uses Terraform to provision resources on AWS or GCP.
+1. Install agent dependencies:
+   ```bash
+   pip install -r agent_requirements.txt
+   ```
 
-### AWS Deployment
+2. Run the agent with the helper script:
+   ```bash
+   # Configure and run the agent
+   python run_agent.py --server https://your-orchestrator-server --tenant your-tenant-id
+   
+   # Use headless mode for machines without GUI
+   python run_agent.py --server https://your-orchestrator-server --tenant your-tenant-id --headless
+   ```
 
-#### Infrastructure Components
+#### Method 2: Docker Container
 
-- **VPC** with public and private subnets
-- **EKS Cluster** for running the Skipper components
-- **RDS PostgreSQL** for persistent storage
-- **Amazon MQ (RabbitMQ)** for message broker
-- **ElastiCache Redis** for caching
-- **S3 Bucket** for event store
-- **HashiCorp Vault** for secrets management
-- **Prometheus and Grafana** for monitoring
-
-#### Deployment Steps
-
-1. Initialize Terraform:
-
-```bash
-cd infra/scripts
-chmod +x deploy.sh
-./deploy.sh --provider aws --environment dev --init
-```
-
-2. Edit the environment variables:
+Use the provided Docker helper script to build and run the agent in a container:
 
 ```bash
-vi ../terraform/aws/environments/dev.tfvars
+# Build and run agent with Docker
+./run_agent_docker.sh --server https://your-orchestrator-server --tenant your-tenant-id
 ```
 
-3. Apply the Terraform configuration:
+You can also build the Docker image manually:
 
 ```bash
-./deploy.sh --provider aws --environment dev --apply
+# Build the Docker image
+docker build -t automation-agent -f agent/Dockerfile .
+
+# Run the container
+docker run --rm automation-agent --server https://your-orchestrator-server --tenant your-tenant-id
 ```
 
-### GCP Deployment
+#### Agent Configuration
 
-#### Infrastructure Components
+The agent can be configured with the following command-line arguments:
 
-- **VPC** with public and private subnets
-- **GKE Cluster** for running the Skipper components
-- **Cloud SQL PostgreSQL** for persistent storage
-- **Pub/Sub** for message broker
-- **Memorystore Redis** for caching
-- **Cloud Storage** for event store
-- **Secret Manager** for secrets management
-- **Cloud Monitoring** for monitoring
+- `--server`: URL of the orchestrator server
+- `--tenant`: ID of your tenant
+- `--headless`: Run in headless mode (no GUI components)
 
-#### Deployment Steps
+Additional configuration is stored in `~/.orchestrator/agent_config.json` and includes:
 
-1. Initialize Terraform:
+- API credentials
+- Agent capabilities
+- Heartbeat intervals
+- Package directories
+- Logging settings
+
+## Documentation
+
+API documentation is available at `/docs` when the server is running.
+
+For full documentation, see the `docs/` directory.
+
+## Examples
+
+We provide several examples to help you get started:
+
+- **Local Testing**: See `examples/local_testing.md` for instructions on testing with a local server setup
+- **Mock Server**: Use `examples/mock_server.py` to quickly test agent functionality without a full orchestrator deployment
+- **Agent Configuration**: Review the agent section above for details on running the agent component
+
+## Development
+
+### Running Tests
 
 ```bash
-cd infra/scripts
-chmod +x deploy.sh
-./deploy.sh --provider gcp --environment dev --init
+pytest
 ```
 
-2. Edit the environment variables:
+### Database Migrations
 
 ```bash
-vi ../terraform/gcp/environments/dev.tfvars
+# Create a migration
+alembic revision --autogenerate -m "Description of changes"
+
+# Apply migrations
+alembic upgrade head
 ```
 
-3. Apply the Terraform configuration:
+## Deployment
+
+### Docker
 
 ```bash
-./deploy.sh --provider gcp --environment dev --apply
+# Build containers
+docker-compose build
+
+# Start services
+docker-compose up -d
 ```
 
-## Architecture Overview
+### Kubernetes
 
-The Skipper infrastructure follows a microservices architecture with the following components:
-
-### Control Plane
-
-- **Web & API Portal**: User interface for managing agents and viewing reports
-- **User Agent**: Handles authentication and authorization
-- **Scheduler Agent**: Distributes tasks among available agents
-- **Execution Agent**: Monitors task execution and collects results
-- **Error-Handling Agent**: Processes failures and retries
-- **Audit & Compliance Agent**: Tracks all operations for compliance
-
-### Infrastructure
-
-- **Message Broker**: RabbitMQ for task distribution and event handling
-- **Credential Vault**: HashiCorp Vault for secure credential management
-- **PostgreSQL DB**: Persistent storage for agents, tasks, and results
-- **Event Store**: Long-term storage for audit events
-- **Observability Suite**: Prometheus/Grafana for metrics and monitoring
-
-### Endpoints
-
-- **Local Agent Cluster**: Distributed agents that execute tasks and report status
-
-## Communication Patterns
-
-The communication between components follows these patterns:
-
-1. **Command Flow**: UI → Auth → Scheduler → Broker → Local Agent
-2. **Result Flow**: Local Agent → Broker → Execution Agent → DB
-3. **Monitoring Flow**: Local Agent → Broker → Observability Suite
-4. **Error Flow**: Local Agent → Broker → Error-Handling Agent → Scheduler
-
-## Security Considerations
-
-### AWS Security
-
-- **VPC Security Groups**: Restrict traffic between services
-- **IAM Roles**: Use least privilege principle for service accounts
-- **KMS Encryption**: Encrypt data at rest
-- **Private Subnets**: Run critical infrastructure in private subnets
-- **Network ACLs**: Control traffic at subnet level
-- **Security Hub**: Monitor security best practices
-
-### GCP Security
-
-- **VPC Service Controls**: Restrict resource access
-- **IAM Roles**: Use least privilege principle for service accounts
-- **KMS Encryption**: Encrypt data at rest
-- **Private Networks**: Run critical infrastructure in private networks
-- **Cloud Armor**: DDoS protection and WAF
-- **Security Command Center**: Monitor security best practices
-
-## Scaling Considerations
-
-The infrastructure is designed to scale independently:
-
-- **Horizontal Scaling**: Add more nodes to the Kubernetes clusters
-- **Vertical Scaling**: Increase resources for individual services
-- **Auto Scaling**: Configure auto-scaling for workloads
-- **Regional Deployments**: Deploy across multiple regions for resilience
-- **Load Balancing**: Distribute traffic across instances
-
-## Monitoring and Observability
-
-The monitoring solution includes:
-
-- **Prometheus**: Metrics collection
-- **Grafana**: Metrics visualization
-- **Loki**: Log aggregation
-- **Jaeger**: Distributed tracing
-- **Alertmanager**: Alert notifications
-
-## Backup and Recovery
-
-The backup strategy includes:
-
-- **Database Backups**: Automated backups for PostgreSQL
-- **Object Storage Versioning**: Versioning for event store data
-- **Snapshot Backups**: Regular snapshots of critical infrastructure
-- **Disaster Recovery**: Cross-region replication for critical data
-- **Restore Testing**: Regular testing of backup restoration
-
-## Maintenance Procedures
-
-### Database Maintenance
-
-- Run `VACUUM ANALYZE` regularly
-- Monitor disk space usage
-- Keep indexes optimized
-
-### Kubernetes Maintenance
-
-- Update Kubernetes version regularly
-- Rotate node certificates
-- Apply security patches promptly
-
-### Certificate Rotation
-
-- Monitor certificate expiration dates
-- Rotate certificates before expiration
-- Use automated certificate management
-
-## Troubleshooting
-
-### Common Issues
-
-#### Database Connection Issues
+Kubernetes manifests are provided in the `deployment/kubernetes/` directory.
 
 ```bash
-# Check database connectivity
-kubectl exec -it deploy/backend -- psql -h postgres -U skipper -d skipper -c "SELECT 1"
+kubectl apply -f deployment/kubernetes/
 ```
-
-#### Message Broker Issues
-
-```bash
-# Check RabbitMQ queues
-kubectl exec -it deploy/rabbitmq -- rabbitmqctl list_queues
-```
-
-#### Agent Connectivity Issues
-
-```bash
-# Check agent logs
-kubectl logs deploy/local-agent
-```
-
-## Contributing to Infrastructure
-
-1. Follow Infrastructure as Code (IaC) principles
-2. Test changes in development before applying to production
-3. Document all infrastructure changes
-4. Use pull requests for infrastructure changes
-5. Follow the principle of least privilege when granting permissions
 
 ## License
 
-[License information goes here]
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgements
+
+- FastAPI and Pydantic for the excellent API framework
+- SQLAlchemy for ORM capabilities
+- Alembic for database migrations
+- RabbitMQ for messaging
+- MinIO for object storage
