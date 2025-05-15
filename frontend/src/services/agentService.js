@@ -151,17 +151,3 @@ export const disableAgentAutoLogin = async (agentId) => {
     );
   }
 };
-
-/**
- * Check for stale agents and mark them as offline.
- */
-export const checkStaleAgents = async (maxSilenceMinutes = 5) => {
-  try {
-    const response = await apiClient.post(`/api/v1/agents/check-stale?max_silence_minutes=${maxSilenceMinutes}`);
-    return response.data;
-  } catch (error) {
-    throw new Error(
-      error.response?.data?.detail || 'Failed to check stale agents'
-    );
-  }
-};

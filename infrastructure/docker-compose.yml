@@ -1,0 +1,361 @@
+version: '3.8'
+
+services:
+  #############################################
+  # Core Services
+  #############################################
+  
+  # Frontend UI for user interaction
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - REACT_APP_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+      
+  # Backend API and control plane services
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://skipper:development@postgres:5432/skipper
+      - BROKER_URL=amqp://guest:guest@rabbitmq:5672/
+      - REDIS_URL=redis://redis:6379/0
+      - VAULT_URL=http://vault:8200
+      - VAULT_TOKEN=${VAULT_TOKEN:-root}
+      - SECRET_KEY=${SECRET_KEY:-development_secret_key}
+      - DEBUG=True
+      - ENVIRONMENT=development
+    depends_on:
+      - postgres
+      - rabbitmq
+      - redis
+      - vault
+  
+  # Authentication and User Management Service
+  auth-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    command: ["python", "-m", "app.services.auth_service"]
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql://skipper:development@postgres:5432/skipper
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-development_secret_key}
+      - DEBUG=True
+    depends_on:
+      - postgres
+      - redis
+      - backend
+  
+  # Scheduling Service
+  scheduler-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    command: ["python", "-m", "app.services.scheduler_service"]
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql://skipper:development@postgres:5432/skipper
+      - BROKER_URL=amqp://guest:guest@rabbitmq:5672/
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=True
+    depends_on:
+      - postgres
+      - rabbitmq
+      - redis
+      - backend
+  
+  # Execution Service
+  execution-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    command: ["python", "-m", "app.services.execution_service"]
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql://skipper:development@postgres:5432/skipper
+      - BROKER_URL=amqp://guest:guest@rabbitmq:5672/
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=True
+    depends_on:
+      - postgres
+      - rabbitmq
+      - redis
+      - backend
+  
+  # Error Handling Service
+  error-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    command: ["python", "-m", "app.services.error_service"]
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql://skipper:development@postgres:5432/skipper
+      - BROKER_URL=amqp://guest:guest@rabbitmq:5672/
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=True
+    depends_on:
+      - postgres
+      - rabbitmq
+      - redis
+      - backend
+  
+  # Audit and Compliance Service
+  audit-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    command: ["python", "-m", "app.services.audit_service"]
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql://skipper:development@postgres:5432/skipper
+      - EVENT_STORE_PATH=/data/events
+      - DEBUG=True
+    volumes:
+      - event-store-data:/data/events
+    depends_on:
+      - postgres
+      - backend
+  
+  #############################################
+  # Agent Components
+  #############################################
+  
+  # Local Agent - can be scaled horizontally
+  local-agent:
+    build:
+      context: ./agents/local
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./agents/local:/app
+    environment:
+      - BROKER_URL=amqp://guest:guest@rabbitmq:5672/
+      - AGENT_ID=agent-${AGENT_ID:-1}
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      - rabbitmq
+  
+  #############################################
+  # Infrastructure Components
+  #############################################
+  
+  # PostgreSQL database for persistent storage
+  postgres:
+    image: postgres:14
+    environment:
+      - POSTGRES_USER=skipper
+      - POSTGRES_PASSWORD=development
+      - POSTGRES_DB=skipper
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/docker/init-scripts/postgres:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skipper"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  
+  # RabbitMQ message broker
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+      - ./infra/docker/init-scripts/rabbitmq:/etc/rabbitmq/conf.d
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  
+  # Redis for caching and temporary storage
+  redis:
+    image: redis:6
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+      - ./infra/docker/config/redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  
+  # HashiCorp Vault for secrets management
+  vault:
+    image: hashicorp/vault:1.13
+    ports:
+      - "8200:8200"
+    environment:
+      - VAULT_DEV_ROOT_TOKEN_ID=root
+      - VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200
+    cap_add:
+      - IPC_LOCK
+    volumes:
+      - vault-data:/vault/file
+    command: ["server", "-dev"]
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  
+  #############################################
+  # Observability Components
+  #############################################
+  
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:v2.43.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/docker/config/prometheus:/etc/prometheus
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    depends_on:
+      - node-exporter
+  
+  # Node Exporter for host metrics
+  node-exporter:
+    image: prom/node-exporter:v1.5.0
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100:9100"
+  
+  # Grafana for metrics visualization
+  grafana:
+    image: grafana/grafana:9.4.7
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./infra/docker/config/grafana/provisioning:/etc/grafana/provisioning
+      - ./infra/docker/config/grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana-data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    depends_on:
+      - prometheus
+  
+  # Loki for log aggregation
+  loki:
+    image: grafana/loki:2.8.0
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./infra/docker/config/loki:/etc/loki
+      - loki-data:/loki
+    command: -config.file=/etc/loki/loki-config.yaml
+  
+  # Promtail for log collection
+  promtail:
+    image: grafana/promtail:2.8.0
+    volumes:
+      - ./infra/docker/config/promtail:/etc/promtail
+      - /var/log:/var/log
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/promtail-config.yaml
+    depends_on:
+      - loki
+  
+  # Jaeger for distributed tracing
+  jaeger:
+    image: jaegertracing/all-in-one:1.43
+    ports:
+      - "16686:16686"  # UI
+      - "14268:14268"  # Collector HTTP
+      - "6831:6831/udp"  # Agent
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+  
+  #############################################
+  # Development Tools
+  #############################################
+  
+  # Mailhog for email testing
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+  
+  # MinIO as S3-compatible storage for event store in development
+  minio:
+    image: minio/minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    command: server /data --console-address ":9001"
+  
+  # PGAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@example.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  redis-data:
+  vault-data:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+  event-store-data:
+  minio-data:
+  pgadmin-data:

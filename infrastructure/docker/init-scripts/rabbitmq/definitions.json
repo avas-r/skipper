@@ -1,0 +1,144 @@
+{
+  "rabbit_version": "3.11.10",
+  "users": [
+    {
+      "name": "guest",
+      "password_hash": "BMfxN8drrYcIqXZMr+pWTpDT0a2NP3LQZu5ZJ7b3D6E5O63b",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": "administrator"
+    }
+  ],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "guest",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "topic_permissions": [],
+  "parameters": [],
+  "global_parameters": [
+    {
+      "name": "cluster_name",
+      "value": "rabbit@skipper"
+    }
+  ],
+  "policies": [],
+  "queues": [
+    {
+      "name": "task_queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 86400000,
+        "x-dead-letter-exchange": "dead_letter_exchange",
+        "x-dead-letter-routing-key": "error_queue"
+      }
+    },
+    {
+      "name": "result_queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 86400000
+      }
+    },
+    {
+      "name": "error_queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "heartbeat_queue",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-message-ttl": 300000
+      }
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "task_exchange",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "result_exchange",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "dead_letter_exchange",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "heartbeat_exchange",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "task_exchange",
+      "vhost": "/",
+      "destination": "task_queue",
+      "destination_type": "queue",
+      "routing_key": "task_queue",
+      "arguments": {}
+    },
+    {
+      "source": "result_exchange",
+      "vhost": "/",
+      "destination": "result_queue",
+      "destination_type": "queue",
+      "routing_key": "result_queue",
+      "arguments": {}
+    },
+    {
+      "source": "dead_letter_exchange",
+      "vhost": "/",
+      "destination": "error_queue",
+      "destination_type": "queue",
+      "routing_key": "error_queue",
+      "arguments": {}
+    },
+    {
+      "source": "heartbeat_exchange",
+      "vhost": "/",
+      "destination": "heartbeat_queue",
+      "destination_type": "queue",
+      "routing_key": "heartbeat_queue",
+      "arguments": {}
+    }
+  ]
+}

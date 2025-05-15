@@ -46,9 +46,9 @@ class PermissionChecker:
         """
         # Get all permissions from user roles
         user_permissions = set()
-        for user_role in user.roles:
-            for role_permission in user_role.role.permissions:
-                user_permissions.add(role_permission.permission.name)
+        for role in user.roles:  # user.roles gives us Role objects directly
+            for permission in role.permissions:  # access permissions directly from Role
+                user_permissions.add(permission.name)
         
         # Check if user has all required permissions
         missing_permissions = set(self.required_permissions) - user_permissions
@@ -111,8 +111,8 @@ def check_resource_permission(
         HTTPException: If user doesn't have permission
     """
     # Admin users bypass permission checks
-    for user_role in user.roles:
-        if user_role.role.name in ["admin", "superuser"]:
+    for role in user.roles:  # user.roles gives us Role objects directly
+        if role.name in ["admin", "superuser"]:
             return True
     
     # If tenant_id provided, check tenant access
@@ -126,9 +126,9 @@ def check_resource_permission(
     permission_name = f"{resource_type}:{action}"
     
     # Get all permissions from user roles
-    for user_role in user.roles:
-        for role_permission in user_role.role.permissions:
-            if role_permission.permission.name == permission_name:
+    for role in user.roles:  # user.roles gives us Role objects directly
+        for permission in role.permissions:  # access permissions directly from Role
+            if permission.name == permission_name:
                 return True
     
     raise HTTPException(

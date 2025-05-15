@@ -1,0 +1,59 @@
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:8000/api/v1
+      - VITE_WS_URL=ws://localhost:8000/api/v1/ws
+    depends_on:
+      - backend
+      
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://skipper:development@postgres:5432/skipper
+      - SECRET_KEY=your_super_secret_key_for_jwt_tokens
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - BACKEND_CORS_ORIGINS=["http://localhost:3000","http://localhost:8000"]
+      - WS_MESSAGE_QUEUE=redis://redis:6379/0
+      - DEBUG=true
+    depends_on:
+      - postgres
+      - redis
+      
+  postgres:
+    image: postgres:14
+    environment:
+      - POSTGRES_USER=skipper
+      - POSTGRES_PASSWORD=development
+      - POSTGRES_DB=skipper
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+      
+  redis:
+    image: redis:6
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  postgres-data:
+  redis-data:

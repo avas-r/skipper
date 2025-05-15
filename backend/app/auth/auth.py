@@ -6,7 +6,7 @@ and general authentication utilities.
 """
 
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -105,7 +105,7 @@ def get_tenant_id_from_user(user: User = Depends(get_current_active_user)) -> st
     return str(user.tenant_id)
 
 
-def verify_permissions(required_permissions, user: User = Depends(get_current_active_user)):
+def verify_permissions(required_permissions: List[str], user: User = Depends(get_current_active_user)):
     """
     Verify user has required permissions.
     
@@ -121,9 +121,9 @@ def verify_permissions(required_permissions, user: User = Depends(get_current_ac
     """
     # Get all permissions from user roles
     user_permissions = set()
-    for user_role in user.roles:
-        for role_permission in user_role.role.permissions:
-            user_permissions.add(role_permission.permission.name)
+    for role in user.roles:  # user.roles gives us Role objects directly
+        for permission in role.permissions:  # access permissions directly from Role
+            user_permissions.add(permission.name)
     
     # Check if user has all required permissions
     missing_permissions = set(required_permissions) - user_permissions
@@ -136,7 +136,7 @@ def verify_permissions(required_permissions, user: User = Depends(get_current_ac
     return True
 
 
-def has_permission(permission_name, user: User) -> bool:
+def has_permission(permission_name: str, user: User) -> bool:
     """
     Check if user has a specific permission.
     
@@ -148,9 +148,9 @@ def has_permission(permission_name, user: User) -> bool:
         bool: True if user has the permission
     """
     # Get all permissions from user roles
-    for user_role in user.roles:
-        for role_permission in user_role.role.permissions:
-            if role_permission.permission.name == permission_name:
+    for role in user.roles:  # user.roles gives us Role objects directly
+        for permission in role.permissions:  # access permissions directly from Role
+            if permission.name == permission_name:
                 return True
                 
     return False

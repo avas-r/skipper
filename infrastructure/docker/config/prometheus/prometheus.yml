@@ -1,0 +1,51 @@
+# Prometheus configuration for Skipper
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+  - static_configs:
+    - targets:
+      # - alertmanager:9093
+
+rule_files:
+  # - "rules.yml"
+
+scrape_configs:
+  # Scrape Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+    - targets: ['localhost:9090']
+
+  # Scrape Node Exporter
+  - job_name: 'node-exporter'
+    static_configs:
+    - targets: ['node-exporter:9100']
+
+  # Scrape RabbitMQ
+  - job_name: 'rabbitmq'
+    static_configs:
+    - targets: ['rabbitmq:15692']
+
+  # Scrape Backend API
+  - job_name: 'backend'
+    metrics_path: '/metrics'
+    static_configs:
+    - targets: ['backend:8000']
+
+  # Scrape Local Agents
+  - job_name: 'local-agents'
+    static_configs:
+    - targets: ['local-agent:8000']
+
+  # Scrape Redis Exporter (would need to be set up)
+  - job_name: 'redis'
+    static_configs:
+    - targets: ['redis-exporter:9121']
+
+  # Scrape PostgreSQL Exporter (would need to be set up)
+  - job_name: 'postgres'
+    static_configs:
+    - targets: ['postgres-exporter:9187']

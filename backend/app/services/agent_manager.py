@@ -295,11 +295,11 @@ class AgentManager:
         }
         
         try:
-            # Send command to agent
+            # Send command to agent - fix the bug in parameter naming
             self.message_producer.send_message(
                 exchange="agents",
                 routing_key=f"agent.{agent_id}.command",
-                message=message
+                message_data=message  # Changed from 'message' to 'message_data'
             )
             
             # Update agent status based on command
