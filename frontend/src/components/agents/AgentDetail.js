@@ -48,6 +48,7 @@ const AgentDetail = ({ agentId, onBack, onUpdate }) => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editFormData, setEditFormData] = useState({
     name: '',
+    hostname: '', // Add hostname field
     tags: [],
     status: '',
     version: ''
@@ -71,6 +72,7 @@ const AgentDetail = ({ agentId, onBack, onUpdate }) => {
       // Initialize edit form data
       setEditFormData({
         name: agentData.name,
+        hostname: agentData.hostname || '', // Add hostname field
         tags: agentData.tags || [],
         status: agentData.status,
         version: agentData.version || ''
@@ -442,7 +444,7 @@ const AgentDetail = ({ agentId, onBack, onUpdate }) => {
                     <ListItemText primary="Machine ID" secondary={agent.machine_id} />
                   </ListItem>
                   <ListItem>
-                    <ListItemText primary="IP Address" secondary={agent.ip_address || 'Not Available'} />
+                    <ListItemText primary="Hostname" secondary={agent.hostname} />
                   </ListItem>
                   <ListItem>
                     <ListItemText primary="Version" secondary={agent.version || 'Unknown'} />
@@ -693,6 +695,16 @@ const AgentDetail = ({ agentId, onBack, onUpdate }) => {
             required
           />
           
+          <TextField
+            margin="normal"
+            name="hostname"
+            label="Hostname"
+            fullWidth
+            value={editFormData.hostname || ''}
+            onChange={handleEditInputChange}
+            helperText="The machine's network hostname"
+          />
+
           <TextField
             margin="normal"
             name="version"

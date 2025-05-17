@@ -41,6 +41,7 @@ const AgentList = ({ onSelectAgent, refreshTrigger }) => {
   const [formData, setFormData] = useState({
     name: '',
     machine_id: '',
+    hostname: '',  // Add hostname field
     tags: [],
     status: 'offline',
     version: ''
@@ -71,6 +72,7 @@ const AgentList = ({ onSelectAgent, refreshTrigger }) => {
     setFormData({
       name: '',
       machine_id: '',
+      hostname: ``,
       tags: [],
       status: 'offline',
       version: ''
@@ -84,6 +86,7 @@ const AgentList = ({ onSelectAgent, refreshTrigger }) => {
     setFormData({
       name: agent.name,
       machine_id: agent.machine_id,
+      hostname: agent.hostname,
       tags: agent.tags || [],
       status: agent.status,
       version: agent.version || ''
@@ -262,7 +265,7 @@ const AgentList = ({ onSelectAgent, refreshTrigger }) => {
     !searchTerm || 
     agent.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     agent.machine_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (agent.ip_address && agent.ip_address.toLowerCase().includes(searchTerm.toLowerCase()))
+    (agent.hostname && agent.hostname.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
@@ -320,7 +323,7 @@ const AgentList = ({ onSelectAgent, refreshTrigger }) => {
                 <TableCell>Name</TableCell>
                 <TableCell>Machine ID</TableCell>
                 <TableCell>Status</TableCell>
-                <TableCell>IP Address</TableCell>
+                <TableCell>Hostname</TableCell>
                 <TableCell>Version</TableCell>
                 <TableCell align="right">Actions</TableCell>
               </TableRow>
@@ -335,7 +338,7 @@ const AgentList = ({ onSelectAgent, refreshTrigger }) => {
                   <TableCell>{agent.name}</TableCell>
                   <TableCell>{agent.machine_id}</TableCell>
                   <TableCell>{renderAgentStatus(agent.status)}</TableCell>
-                  <TableCell>{agent.ip_address || '-'}</TableCell>
+                  <TableCell>{agent.hostname || '-'}</TableCell>
                   <TableCell>{agent.version || '-'}</TableCell>
                   <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                     {agent.status === 'online' || agent.status === 'busy' ? (
@@ -420,6 +423,18 @@ const AgentList = ({ onSelectAgent, refreshTrigger }) => {
             disabled={isEditing} // Can't change machine ID when editing
           />
           
+          {/* Add Hostname field */}
+          <TextField
+            margin="normal"
+            name="hostname"
+            label="Hostname"
+            fullWidth
+            value={formData.hostname || ''}
+            onChange={handleInputChange}
+            required
+            helperText="The machine's network hostname"
+          />       
+
           <TextField
             margin="normal"
             name="version"

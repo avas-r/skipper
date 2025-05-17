@@ -22,8 +22,14 @@ class AgentBase(BaseModel):
 
 class AgentCreate(AgentBase):
     """Schema for creating a new agent"""
+    name: str
+    machine_id: str
+    hostname: Optional[str] = None  # Ensure this is included
     tenant_id: Optional[uuid.UUID] = None
     version: Optional[str] = None
+    capabilities: Optional[Dict[str, Any]] = None
+    tags: Optional[List[str]] = None
+    settings: Optional[Dict[str, Any]] = None
 
 class AgentUpdate(BaseModel):
     """Schema for updating an agent"""
@@ -55,9 +61,29 @@ class AgentInDBBase(AgentBase):
         """Configuration for Pydantic model"""
         from_attributes = True
 
-class AgentResponse(AgentInDBBase):
-    """Schema for agent response"""
-    pass
+class AgentResponse(BaseModel):
+    """Schema for agent response."""
+    agent_id: uuid.UUID
+    tenant_id: uuid.UUID
+    name: str
+    machine_id: str
+    hostname: Optional[str] = None  # Make sure hostname is included
+    ip_address: Optional[str] = None
+    status: str
+    last_heartbeat: Optional[datetime] = None
+    version: Optional[str] = None
+    capabilities: Optional[Dict[str, Any]] = None
+    tags: Optional[List[str]] = None
+    settings: Optional[Dict[str, Any]] = None
+    created_at: datetime
+    updated_at: datetime
+    auto_login_enabled: Optional[bool] = None
+    session_type: Optional[str] = None
+    #service_account: Optional[ServiceAccountResponse] = None
+
+    class Config:
+        """Pydantic config."""
+        orm_mode = True
 
 class AgentLogBase(BaseModel):
     """Base schema for agent log data"""

@@ -73,7 +73,7 @@ class AgentService:
                 "info",
                 f"Agent updated: {existing_agent.name}",
                 {
-                    "ip_address": existing_agent.ip_address,
+                    "hostname": existing_agent.hostname,
                     "version": existing_agent.version
                 }
             )
@@ -90,6 +90,7 @@ class AgentService:
             agent_data["tenant_id"] = tenant_id
             agent_data["status"] = "online"
             agent_data["last_heartbeat"] = datetime.utcnow()
+            agent_data["hostname"] = agent_data.hostname
             
             new_agent = Agent(**agent_data)
             self.db.add(new_agent)
@@ -104,7 +105,7 @@ class AgentService:
                 f"Agent registered: {new_agent.name}",
                 {
                     "machine_id": new_agent.machine_id,
-                    "ip_address": new_agent.ip_address,
+                    "hostname": new_agent.hostname,
                     "version": new_agent.version
                 }
             )
@@ -141,9 +142,11 @@ class AgentService:
         if existing_agent:
             raise ValueError(f"Agent with machine_id {agent_in.machine_id} already exists")
         
+
         # Create new agent
         agent_data = agent_in.dict(exclude_unset=True, exclude={"tenant_id"})
         agent_data["tenant_id"] = tenant_id
+        agent_data["hostname"] = agent_data.hostname
         
         new_agent = Agent(**agent_data)
         self.db.add(new_agent)
@@ -159,7 +162,8 @@ class AgentService:
             entity_id=new_agent.agent_id,
             details={
                 "name": new_agent.name,
-                "machine_id": new_agent.machine_id
+                "machine_id": new_agent.machine_id,
+                "hostname": new_agent.hostname
             }
         )
         self.db.add(audit_log)
@@ -304,7 +308,7 @@ class AgentService:
                 or_(
                     Agent.name.ilike(f"%{search}%"),
                     Agent.machine_id.ilike(f"%{search}%"),
-                    Agent.ip_address.ilike(f"%{search}%")
+                    Agent.hostname.ilike(f"%{search}%")
                 )
             )
         

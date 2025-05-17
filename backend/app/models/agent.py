@@ -78,6 +78,7 @@ class Agent(Base):
     # Agent information
     name = Column(String(255), nullable=False)
     machine_id = Column(String(255), nullable=False)
+    hostname = Column(String(255), nullable=True)  # Add hostname field
     ip_address = Column(INET, nullable=True)
     api_key = Column(String(255), nullable=True)
     

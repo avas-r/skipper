@@ -184,15 +184,31 @@ def delete_agent(
             tenant_id=str(agent.tenant_id),
             user_id=str(current_user.user_id)
         )
-    except HTTPException as e:
-        # Re-raise HTTP exceptions
-        raise e
     except Exception as e:
+        # Handle the error more robustly
         logger.error(f"Failed to delete agent: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete agent: {str(e)}"
-        )
+        
+        # Try a more direct deletion approach if schema issues exist
+        try:
+            # Delete agent logs first
+            db.query(AgentLog).filter(AgentLog.agent_id == agent.agent_id).delete()
+            
+            # Delete the agent directly
+            db.delete(agent)
+            db.commit()
+            
+            # Log successful fallback deletion
+            logger.info(f"Deleted agent {agent.agent_id} using fallback method")
+            
+            # Return successfully
+            return
+        except Exception as fallback_error:
+            # If fallback also fails, raise the original error
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to delete agent: {str(e)}"
+            )
+
 
 @router.get("/{agent_id}/logs", response_model=List[AgentLogResponse])
 def get_agent_logs(

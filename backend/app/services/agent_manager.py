@@ -207,44 +207,52 @@ class AgentManager:
             "created_at": agent.created_at.isoformat() if agent.created_at else None
         }
         
-        # Check if agent has active sessions
-        active_sessions = self.db.query(AgentSession).filter(
-            AgentSession.agent_id == agent_id,
-            AgentSession.ended_at.is_(None)
-        ).count()
-        
-        if active_sessions > 0:
-            # End active sessions
-            self.db.query(AgentSession).filter(
+        try:
+            # Check if agent has active sessions
+            active_sessions = self.db.query(AgentSession).filter(
                 AgentSession.agent_id == agent_id,
                 AgentSession.ended_at.is_(None)
-            ).update({
-                "ended_at": datetime.now(timezone.utc),
-                "status": "terminated"
-            })
-        
-        # Delete agent logs
-        self.db.query(AgentLog).filter(
-            AgentLog.agent_id == agent_id
-        ).delete()
-        
-        # Delete agent
-        self.db.delete(agent)
-        
-        # Create audit log
-        self._create_audit_log(
-            tenant_id=tenant_id,
-            user_id=user_id,
-            action="delete_agent",
-            entity_type="agent",
-            entity_id=agent_id,
-            details=agent_info
-        )
-        
-        self.db.commit()
-        
-        return True
-    
+            ).count()
+            
+            if active_sessions > 0:
+                # End active sessions
+                self.db.query(AgentSession).filter(
+                    AgentSession.agent_id == agent_id,
+                    AgentSession.ended_at.is_(None)
+                ).update({
+                    "ended_at": datetime.now(timezone.utc),
+                    "status": "terminated"
+                })
+            
+            # Delete agent logs
+            self.db.query(AgentLog).filter(
+                AgentLog.agent_id == agent_id
+            ).delete()
+            
+            # Delete agent
+            self.db.delete(agent)
+            
+            # Create audit log
+            self._create_audit_log(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                action="delete_agent",
+                entity_type="agent",
+                entity_id=agent_id,
+                details=agent_info
+            )
+            
+            self.db.commit()
+            
+            return True
+        except Exception as e:
+            self.db.rollback()
+            import traceback
+            print(f"Error deleting agent: {str(e)}")
+            print(traceback.format_exc())
+            raise ValueError(f"Failed to delete agent: {str(e)}")
+
+
     def get_agent_logs(self, agent_id: str, tenant_id: str, 
                        log_level: Optional[str] = None,
                        skip: int = 0, limit: int = 100) -> List[AgentLog]:
