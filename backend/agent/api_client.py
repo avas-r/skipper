@@ -1,15 +1,4 @@
-"""
-API Client for Orchestrator Server Communication
-
-This module handles all communication between the agent and the orchestration server,
-including:
-- Agent registration and authentication
-- Heartbeat signals
-- Job retrieval and status updates
-- Package downloads
-- Credential and configuration retrieval
-"""
-
+# agent/api_client.py
 import os
 import json
 import logging
@@ -22,7 +11,6 @@ from datetime import datetime
 import psutil
 import time
 import zipfile
-import tempfile
 from pathlib import Path
 from io import BytesIO
 
@@ -57,12 +45,16 @@ class ApiClient:
         # Add default headers
         self.session.headers.update({
             "User-Agent": f"OrchestratorAgent/{self._get_version()}",
-            "X-Agent-ID": self.agent_id,
             "X-Tenant-ID": self.tenant_id,
             "X-Machine-ID": config.get("machine_id"),
             "Content-Type": "application/json"
         })
         
+        # Add agent ID header if available
+        if self.agent_id:
+            self.session.headers.update({"X-Agent-ID": self.agent_id})
+        
+        # Add authorization header if API key is available
         if self.api_key:
             self.session.headers.update({
                 "Authorization": f"Bearer {self.api_key}"
@@ -106,6 +98,7 @@ class ApiClient:
             data = {
                 "machine_id": self.config.get("machine_id"),
                 "name": self.config.get("name"),
+                "hostname": socket.gethostname(),
                 "ip_address": self._get_ip_address(),
                 "version": self._get_version(),
                 "capabilities": self.config.get("capabilities"),
@@ -132,6 +125,9 @@ class ApiClient:
                     self.config.set("api_key", result["api_key"])
                     self.session.headers.update({"Authorization": f"Bearer {result['api_key']}"})
                     
+                    # Save the configuration to persist the API key
+                    self.config.save()
+                    
                 return result
             else:
                 logger.error(f"Agent registration failed: {response.status_code} - {response.text}")
@@ -154,23 +150,32 @@ class ApiClient:
         try:
             url = f"{self.base_url}/api/v1/agents/{self.agent_id}/heartbeat"
             
+            # Prepare heartbeat data according to schema  
+            heartbeat_data = {
+                "status": "online",
+                "metrics": {},
+                "jobs": None
+            }
+            
             # Collect basic system metrics
             if metrics is None:
-                metrics = {
+                heartbeat_data["metrics"] = {
                     "cpu_percent": psutil.cpu_percent(),
                     "memory_percent": psutil.virtual_memory().percent,
                     "disk_percent": psutil.disk_usage("/").percent,
                     "active_jobs": 0,  # Would be set by agent manager
                     "timestamp": datetime.utcnow().isoformat(),
                     "session_status": self.config.get("session_status", "unknown"),
-                    "tenant_id": self.tenant_id  # Add tenant_id to help the server
+                    "tenant_id": self.tenant_id
                 }
+            else:
+                heartbeat_data["metrics"] = metrics
                 
-            # Always include tenant_id in heartbeat data
-            if "tenant_id" not in metrics:
-                metrics["tenant_id"] = self.tenant_id
+            # Always include tenant_id in metrics
+            if "tenant_id" not in heartbeat_data["metrics"]:
+                heartbeat_data["metrics"]["tenant_id"] = self.tenant_id
                 
-            response = self.session.post(url, json=metrics)
+            response = self.session.post(url, json=heartbeat_data)
             
             if response.status_code == 200:
                 return response.json()
@@ -220,7 +225,7 @@ class ApiClient:
             
             data = {
                 "status": status,
-                "timestamp": datetime.now(datetime.UTC).isoformat()
+                "timestamp": datetime.utcnow().isoformat()
             }
             
             if error:
@@ -241,11 +246,12 @@ class ApiClient:
             logger.error(f"Error updating job status: {e}")
             return None
             
-    def get_package(self, package_id, target_dir=None):
+    def get_package(self, package_id, version=None, target_dir=None):
         """Download automation package
         
         Args:
             package_id (str): The package ID to download
+            version (str, optional): The specific version to download
             target_dir (str, optional): Directory to save the package.
                 Defaults to the configured packages_dir.
                 
@@ -254,8 +260,12 @@ class ApiClient:
         """
         try:
             url = f"{self.base_url}/api/v1/packages/{package_id}/download"
+            if version:
+                url += f"?version={version}"
             
-            target_dir = target_dir or self.config.get("packages_dir")
+            target_dir = target_dir or self.config.get("settings.packages_dir") or "packages"
+            os.makedirs(target_dir, exist_ok=True)
+            
             package_path = os.path.join(target_dir, f"{package_id}")
             
             response = self.session.get(url, stream=True)
@@ -391,7 +401,7 @@ class ApiClient:
                 "step_id": step_id,
                 "description": description,
                 "status": status,
-                "timestamp": datetime.now(datetime.UTC).isoformat()
+                "timestamp": datetime.utcnow().isoformat()
             }
             
             if data:
@@ -399,7 +409,7 @@ class ApiClient:
                 
             # Capture screenshot if requested and we're not in headless mode
             screenshot_data = None
-            if take_screenshot and not self.config.get("settings", {}).get("headless", False):
+            if take_screenshot and not self.config.get("settings.headless", False):
                 try:
                     # Import only when needed and check if import is successful
                     try:
@@ -454,7 +464,7 @@ class ApiClient:
             
             data = {
                 "status": status,
-                "timestamp": datetime.now(datetime.UTC).isoformat()
+                "timestamp": datetime.utcnow().isoformat()
             }
             
             response = self.session.put(url, json=data)
@@ -469,5 +479,4 @@ class ApiClient:
                 
         except Exception as e:
             logger.error(f"Error updating session status: {e}")
-            return None        
-
+            return None

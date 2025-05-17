@@ -198,7 +198,7 @@ def main():
         config = AgentConfig()
         
         # Set up logging based on configuration
-        logger.setLevel(config.get("log_level", "INFO"))
+        logger.setLevel(config.get("settings.log_level", "INFO"))
         
         # Create API client
         api_client = ApiClient(config)
@@ -233,7 +233,7 @@ def main():
         # Start heartbeat thread
         heartbeat_thread = Thread(
             target=send_heartbeat_periodically, 
-            args=(api_client, config.get("heartbeat_interval", 30)),
+            args=(api_client, config.get("settings.heartbeat_interval", 30)),
             daemon=True
         )
         heartbeat_thread.start()
@@ -262,7 +262,7 @@ def main():
             session_thread.start()
         
         # Create system tray icon if in attended mode
-        if not config.get("headless", False):
+        if not config.get("settings.headless", False):
             setup_system_tray(config)
             
         # Keep main thread alive

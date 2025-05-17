@@ -39,7 +39,7 @@ class PackageManager:
         """
         self.api_client = api_client
         self.config = config
-        self.packages_dir = config.get("packages_dir")
+        self.packages_dir = config.get("settings.packages_dir")
         self.active_executions = {}
         
         # Ensure packages directory exists
@@ -98,7 +98,7 @@ class PackageManager:
                 else:
                     # No specific version, check if we need to check for updates
                     last_check = self.metadata_cache.get(package_id, {}).get("last_check", 0)
-                    cache_ttl = self.config.get("package_cache_ttl", 3600)  # 1 hour default
+                    cache_ttl = self.config.get("settings.package_cache_ttl", 3600)  # 1 hour default
                     
                     # If cache is still valid
                     if time.time() - last_check < cache_ttl:
@@ -246,7 +246,7 @@ class PackageManager:
             return False, execution_id, {"error": "Failed to install package dependencies"}
             
         # Create execution workspace
-        workspace_dir = os.path.join(self.config.get("workspace_dir", "workspaces"), execution_id)
+        workspace_dir = os.path.join(self.config.get("settings.workspace_dir", "workspaces"), execution_id)
         os.makedirs(workspace_dir, exist_ok=True)
         
         # Find the main script

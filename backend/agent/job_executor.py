@@ -80,11 +80,11 @@ class JobExecutor:
             )
             
             # Set up workspace
-            working_dir = context.setup_workspace(self.config.get("working_dir"))
+            working_dir = context.setup_workspace(self.config.get("settings.working_dir"))
             context.log(f"Setting up workspace at {working_dir}")
             
             # Download package if not already available
-            package_dir = os.path.join(self.config.get("packages_dir"), package_id)
+            package_dir = os.path.join(self.config.get("settings.packages_dir"), package_id)
             if not os.path.exists(package_dir):
                 context.log(f"Downloading package {package_id}")
                 package_dir = self.api_client.get_package(package_id)
@@ -166,7 +166,7 @@ class JobExecutor:
                 
             # Set timeout handler if specified
             timeout_seconds = context.get_parameter("timeout_seconds", 
-                                                  self.config.get("default_timeout", 3600))
+                                                  self.config.get("settings.default_timeout", 3600))
             timer = None
             
             if timeout_seconds > 0:

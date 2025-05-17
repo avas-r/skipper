@@ -125,8 +125,34 @@ class AgentHeartbeatRequest(BaseModel):
     status: str = "online"
     metrics: Dict[str, Any] = {}
     jobs: Optional[Dict[str, Any]] = None
+    capabilities: Optional[Dict[str, Any]] = None
+    ip_address: Optional[str] = None
 
 class AgentHeartbeatResponse(BaseModel):
     """Schema for agent heartbeat response"""
     commands: List[Dict[str, Any]] = []
     server_time: datetime = Field(default_factory=datetime.utcnow)
+
+class AgentRegistrationResponse(BaseModel):
+    """Schema for agent registration response (includes API key)"""
+    agent_id: uuid.UUID
+    tenant_id: uuid.UUID
+    name: str
+    machine_id: str
+    hostname: Optional[str] = None
+    ip_address: Optional[str] = None
+    status: str
+    api_key: str  # Include API key in registration response
+    last_heartbeat: Optional[datetime] = None
+    version: Optional[str] = None
+    capabilities: Optional[Dict[str, Any]] = None
+    tags: Optional[List[str]] = None
+    settings: Optional[Dict[str, Any]] = None
+    created_at: datetime
+    updated_at: datetime
+    auto_login_enabled: Optional[bool] = None
+    session_type: Optional[str] = None
+    
+    class Config:
+        """Pydantic config."""
+        orm_mode = True

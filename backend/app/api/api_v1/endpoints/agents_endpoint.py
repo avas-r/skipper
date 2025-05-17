@@ -26,7 +26,8 @@ from app.schemas.agent import (
     AgentResponse, 
     AgentLogResponse,
     AgentCommandRequest,
-    AgentHeartbeatRequest
+    AgentHeartbeatRequest,
+    AgentRegistrationResponse
 )
 from app.services.agent_manager import AgentManager
 from app.messaging.producer import get_message_producer
@@ -355,7 +356,7 @@ def disable_agent_auto_login(
             detail=f"Failed to disable auto-login: {str(e)}"
         )
 
-@router.post("/register", response_model=AgentResponse)
+@router.post("/register", response_model=AgentRegistrationResponse)
 def register_agent(
     agent_in: AgentCreate,
     db: Session = Depends(get_db)

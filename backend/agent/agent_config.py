@@ -1,39 +1,15 @@
+# agent/agent_config.py
 import os
 import sys
 import json
 import uuid
-import time
 import logging
 import platform
-import requests
-import subprocess
-import threading
-import tempfile
-import ssl
 import socket
-import base64
-import certifi
 import psutil
-import zipfile
-import schedule
-import pystray
-from PIL import Image
-from io import BytesIO
-from datetime import datetime, timedelta
+from datetime import datetime
 from cryptography.fernet import Fernet
-from threading import Thread, Lock
 from pathlib import Path
-import urllib3
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("agent.log"),
-        logging.StreamHandler()
-    ]
-)
 
 logger = logging.getLogger("orchestrator-agent")
 
@@ -109,7 +85,10 @@ class AgentConfig:
                 "heartbeat_interval": 30,
                 "job_poll_interval": 15,
                 "update_check_interval": 3600,
-                "headless": True
+                "headless": True,
+                "packages_dir": os.path.join(os.path.expanduser("~"), ".orchestrator", "packages"),
+                "working_dir": os.path.join(os.path.expanduser("~"), ".orchestrator", "workspaces"),
+                "workspace_dir": os.path.join(os.path.expanduser("~"), ".orchestrator", "workspaces")
             }
         }
         
@@ -218,11 +197,29 @@ class AgentConfig:
             
     def get(self, key, default=None):
         """Get configuration value"""
+        if "." in key:
+            parts = key.split(".")
+            current = self.config
+            for part in parts:
+                if part in current:
+                    current = current[part]
+                else:
+                    return default
+            return current
         return self.config.get(key, default)
         
     def set(self, key, value):
         """Set configuration value"""
-        self.config[key] = value
+        if "." in key:
+            parts = key.split(".")
+            current = self.config
+            for i, part in enumerate(parts[:-1]):
+                if part not in current:
+                    current[part] = {}
+                current = current[part]
+            current[parts[-1]] = value
+        else:
+            self.config[key] = value
         self.save()
         
     def update(self, new_config):
