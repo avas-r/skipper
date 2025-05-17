@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 # Permission dependencies
 require_agent_read = PermissionChecker(["agent:read"])
-require_agent_create = PermissionChecker(["agent:create"])
+require_agent_create = PermissionChecker(["agent:write"])
 require_agent_update = PermissionChecker(["agent:update"])
 require_agent_delete = PermissionChecker(["agent:delete"])
 

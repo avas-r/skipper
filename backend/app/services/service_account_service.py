@@ -31,7 +31,7 @@ class ServiceAccountService:
             db: Database session
         """
         self.db = db
-    
+
     def create_service_account(
         self, 
         service_account_in: ServiceAccountCreate, 
@@ -49,72 +49,81 @@ class ServiceAccountService:
         Returns:
             ServiceAccount: Created service account
         """
-        # Validate tenant
-        tenant = self.db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
-        if not tenant:
-            raise ValueError(f"Tenant not found: {tenant_id}")
-        
-        # Check if username already exists for tenant
-        existing = self.db.query(ServiceAccount).filter(
-            ServiceAccount.tenant_id == tenant_id,
-            ServiceAccount.username == service_account_in.username
-        ).first()
-        
-        if existing:
-            raise ValueError(f"Service account with username '{service_account_in.username}' already exists")
-        
-        # Extract service account data
-        service_account_data = service_account_in.dict(exclude={"password"})
-        service_account_data["tenant_id"] = tenant_id
-        service_account_data["created_by"] = user_id
-        
-        # Generate password if not provided
-        password = service_account_in.password
-        if not password:
-            # Generate a secure random password
-            alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
-            password = ''.join(secrets.choice(alphabet) for _ in range(16))
-        
-        # Hash password
-        hashed_password = get_password_hash(password)
-        
-        # Create configuration with auto login settings
-        service_account_data["configuration"] = {
-            "auto_login": {},
-            "creation_date": datetime.utcnow().isoformat(),
-            "password_updated_at": datetime.utcnow().isoformat()
-        }
-        
-        # Create service account
-        service_account = ServiceAccount(**service_account_data)
-        service_account.hashed_password = hashed_password
-        
-        self.db.add(service_account)
-        self.db.commit()
-        self.db.refresh(service_account)
-        
-        # Create audit log
-        audit_log = AuditLog(
-            tenant_id=tenant_id,
-            user_id=user_id,
-            action="create_service_account",
-            entity_type="service_account",
-            entity_id=service_account.account_id,
-            details={
-                "username": service_account.username,
-                "display_name": service_account.display_name,
-                "account_type": service_account.account_type
+        try:
+            # Validate tenant
+            tenant = self.db.query(Tenant).filter(Tenant.tenant_id == tenant_id).first()
+            if not tenant:
+                raise ValueError(f"Tenant not found: {tenant_id}")
+            
+            # Check if username already exists for tenant
+            existing = self.db.query(ServiceAccount).filter(
+                ServiceAccount.tenant_id == tenant_id,
+                ServiceAccount.username == service_account_in.username
+            ).first()
+            
+            if existing:
+                raise ValueError(f"Service account with username '{service_account_in.username}' already exists")
+            
+            # Extract service account data
+            service_account_data = service_account_in.dict(exclude={"password"})
+            service_account_data["tenant_id"] = tenant_id
+            service_account_data["created_by"] = user_id
+            
+            # Generate password if not provided
+            password = service_account_in.password
+            if not password:
+                # Generate a secure random password
+                alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+                password = ''.join(secrets.choice(alphabet) for _ in range(16))
+            
+            # Hash password
+            hashed_password = get_password_hash(password)
+            
+            # Create configuration with auto login settings
+            service_account_data["configuration"] = {
+                "auto_login": {},
+                "creation_date": datetime.utcnow().isoformat(),
+                "password_updated_at": datetime.utcnow().isoformat()
             }
-        )
-        self.db.add(audit_log)
-        self.db.commit()
-        
-        # Temporarily attach the plain password to return to the client
-        # This will be the only time the password is visible
-        service_account.password = password
-        
-        return service_account
-    
+            
+            # Create service account
+            service_account = ServiceAccount(**service_account_data)
+            service_account.hashed_password = hashed_password
+            
+            self.db.add(service_account)
+            self.db.commit()
+            self.db.refresh(service_account)
+            
+            # Create audit log
+            audit_log = AuditLog(
+                log_id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                user_id=user_id,
+                action="create_service_account",
+                entity_type="service_account",
+                entity_id=service_account.account_id,
+                details={
+                    "username": service_account.username,
+                    "display_name": service_account.display_name,
+                    "account_type": service_account.account_type
+                }
+            )
+            self.db.add(audit_log)
+            self.db.commit()
+            
+            # Temporarily attach the plain password to return to the client
+            # This will be the only time the password is visible
+            service_account.password = password
+            
+            return service_account
+        except Exception as e:
+            self.db.rollback()
+            import traceback
+            print(f"Error creating service account: {str(e)}")
+            print(traceback.format_exc())
+            raise ValueError(f"Failed to create service account: {str(e)}")    
+
+
     def get_service_account(self, service_account_id: str, tenant_id: str) -> Optional[ServiceAccount]:
         """
         Get a service account by ID.

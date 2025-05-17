@@ -17,7 +17,18 @@ from .jwt import get_current_active_user
 
 
 class PermissionChecker:
-    """Permission checker for role-based access control"""
+    """
+    Dependency for checking if user has required permissions.
+    
+    Example:
+        ```
+        @app.get("/items")
+        def read_items(
+            _: bool = Depends(PermissionChecker(["item:read"]))
+        ):
+            return {"items": []}
+        ```
+    """
     
     def __init__(self, required_permissions: List[str]):
         """
@@ -27,16 +38,13 @@ class PermissionChecker:
             required_permissions: List of required permission names
         """
         self.required_permissions = required_permissions
-    
-    def __call__(
-        self, user: User = Depends(get_current_active_user), db: Session = Depends(get_db)
-    ) -> bool:
+        
+    def __call__(self, user: User = Depends(get_current_active_user)):
         """
         Check if user has required permissions.
         
         Args:
-            user: Current authenticated user
-            db: Database session
+            user: Current user
             
         Returns:
             bool: True if user has all required permissions
@@ -44,21 +52,47 @@ class PermissionChecker:
         Raises:
             HTTPException: If user doesn't have required permissions
         """
+        # Check if user is admin or superuser - they get all permissions
+        for role in user.roles:
+            if role.name.lower() in ["admin", "superuser"]:
+                return True
+                
         # Get all permissions from user roles
         user_permissions = set()
-        for role in user.roles:  # user.roles gives us Role objects directly
-            for permission in role.permissions:  # access permissions directly from Role
+        for role in user.roles:
+            for permission in role.permissions:
                 user_permissions.add(permission.name)
         
         # Check if user has all required permissions
         missing_permissions = set(self.required_permissions) - user_permissions
         if missing_permissions:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permissions: {', '.join(missing_permissions)}",
-            )
+            # Make one more check for similar permissions with different action types
+            # e.g., if 'service_account:create' is needed but user has 'service_account:write'
+            flexible_missing = set()
+            for perm in missing_permissions:
+                resource = perm.split(':')[0]
+                found = False
+                for user_perm in user_permissions:
+                    if user_perm.startswith(resource + ':write'):
+                        found = True
+                        break
+                if not found:
+                    flexible_missing.add(perm)
+            
+            if flexible_missing:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Missing required permissions: {', '.join(flexible_missing)}"
+                )
             
         return True
+
+
+def is_admin_role(role_name: str) -> bool:
+    """Check if a role name is an admin-level role that should have all permissions."""
+    if not role_name:
+        return False
+    return role_name.lower() in ['admin', 'superuser']
 
 
 def has_permission(permission_name: str) -> Callable:

@@ -75,6 +75,13 @@ def create_initial_permissions(db: Session):
         {"name": "queue:read", "resource": "queue", "action": "read", "description": "View queues"},
         {"name": "queue:write", "resource": "queue", "action": "write", "description": "Create/modify queues"},
         {"name": "queue:delete", "resource": "queue", "action": "delete", "description": "Delete queues"}
+    
+        # Service account permissions
+        {"name": "service_account:read", "resource": "service_account", "action": "read", "description": "View service accounts"},
+        {"name": "service_account:write", "resource": "service_account", "action": "write", "description": "Create/modify service accounts"},
+        {"name": "service_account:delete", "resource": "service_account", "action": "delete", "description": "Delete service accounts"},
+        {"name": "service_account:create", "resource": "service_account", "action": "create", "description": "Create service accounts"},
+ 
     ]
     
     for perm_data in permissions:

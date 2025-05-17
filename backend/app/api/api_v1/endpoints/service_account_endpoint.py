@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 
 # Permission dependencies
 require_service_account_read = PermissionChecker(["service_account:read"])
-require_service_account_create = PermissionChecker(["service_account:create"])
-require_service_account_update = PermissionChecker(["service_account:update"])
+require_service_account_create = PermissionChecker(["service_account:write"])  # Changed from service_account:create
+require_service_account_update = PermissionChecker(["service_account:write"])
 require_service_account_delete = PermissionChecker(["service_account:delete"])
 
 @router.get("/", response_model=List[ServiceAccountResponse])
